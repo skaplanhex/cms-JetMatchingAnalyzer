@@ -146,10 +146,10 @@ private:
     TH1D* hJetPhiALL;
     
     //ofstreams to make text files of events in each category
-    /*ofstream eventJSON;
-     ofstream eventINFO;
+    ofstream eventJSON;
+    ofstream eventINFO;
      
-     ofstream bparton_chadron_eventINFO;
+     /*ofstream bparton_chadron_eventINFO;
      ofstream bparton_chadron_eventJSON;
      ofstream bparton_lighthadron_eventINFO;
      ofstream bparton_lighthadron_eventJSON;
@@ -187,9 +187,9 @@ JetMatchingAnalyzer::JetMatchingAnalyzer(const edm::ParameterSet& iConfig)
     jetPtCut = iConfig.getParameter<double>("jetPtCut");
     
     //initialize filenames for each ofstream
-    /*eventJSON.open("eventJSON.txt");
-     eventINFO.open("eventINFO.txt");
-     bparton_chadron_eventINFO.open("bparton_chadron_eventINFO.txt");
+    eventJSON.open("eventJSON.txt");
+    eventINFO.open("eventINFO.txt");
+     /*bparton_chadron_eventINFO.open("bparton_chadron_eventINFO.txt");
      bparton_chadron_eventJSON.open("bparton_chadron_eventJSON.txt");
      bparton_lighthadron_eventINFO.open("bparton_lighthadron_eventINFO.txt");
      bparton_lighthadron_eventJSON.open("bparton_lighthadron_eventJSON.txt");
@@ -213,9 +213,9 @@ JetMatchingAnalyzer::~JetMatchingAnalyzer()
     // (e.g. close files, deallocate resources etc.)
     
     //once all the events are processed, close filestreams
-    /*eventJSON.close();
-     eventINFO.close();
-     bparton_chadron_eventINFO.close();
+    eventJSON.close();
+    eventINFO.close();
+     /*bparton_chadron_eventINFO.close();
      bparton_chadron_eventJSON.close();
      bparton_lighthadron_eventINFO.close();
      bparton_lighthadron_eventJSON.close();
@@ -253,14 +253,14 @@ void
 JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
     using namespace std;
-    //    unsigned int lumi = iEvent.luminosityBlock();
-    //    unsigned int run = iEvent.run();
-    //    unsigned int event = iEvent.id().event();
-    //
-    //    stringstream ss;
-    //    ss << run << ":" << lumi << ":" << event;
-    //    string eventAddress = ss.str();
-    //    bool eventAdded = false;
+        unsigned int lumi = iEvent.luminosityBlock();
+        unsigned int run = iEvent.run();
+        unsigned int event = iEvent.id().event();
+    
+        stringstream ss;
+        ss << run << ":" << lumi << ":" << event;
+        string eventAddress = ss.str();
+        bool eventAdded = false;
     
     
     //    cout << eventAddress << endl;
@@ -282,6 +282,7 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
         const reco::JetFlavourInfo aInfo = (*iMatch).second;
         const reco::GenParticleRefVector & bHadrons = aInfo.getbHadrons();
         const reco::GenParticleRefVector & cHadrons = aInfo.getcHadrons();
+        const reco::GenParticleRefVector & partons = aInfo.getPartons();
         bool matchedtoGhostHadron = (bHadrons.size() != 0) || (cHadrons.size() != 0);
         const reco::GenParticleRef partonRef = (*jetFlavourByRefMatches)[currentIndex].second.algoDefinitionParton();
         math::XYZTLorentzVector jetp4 = iJet->p4();
@@ -314,13 +315,24 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             //cout << matchedtoGhostHadron << " " << jetPt << " " << closestGhostHadronDr << endl;
             ghostHadronJetDr_JetPt->Fill(jetPt,closestGhostHadronDr);
         }
+        //loop over parton ghost matches to get the dR between the jet and the closest parton ghost
+        reco::GenParticle* closestGhostParton = NULL;
+        double closestGhostPartonDr = 10000;
+        for(reco::GenParticleRefVector::const_iterator it = partons.begin(); it != partons.end(); ++it){
+            const reco::GenParticle* parton = &(*(*it));
+            double dr = DeltaR_Rapidity(iJet,parton);
+            if (dr < closestGhostPartonDr) {
+                closestGhostPartonDr = dr;
+                closestGhostParton = const_cast< reco::GenParticle* >(parton);
+            }
+        }
         //old parton matching
         bool matchedtoBQuark;
         bool matchedtoCQuark;
         bool matchedtoLightFlavor;
         bool notMatchedToParton;
         
-        if (partonRef.isNull()) {
+        if (partonRef.isNull()) { //if there is no matched parton
             matchedtoBQuark = false;
             matchedtoCQuark = false;
             matchedtoLightFlavor = false;
@@ -547,6 +559,37 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
         else if (matchedtoCPartonGhost && matchedtoLightHadronGhost) {
             partonGhostNum = 1;
             ghostHadronNum = 2;
+            //these are events where a jet was matched to a c parton ghost but NOT a c (or a b) hadron ghost.  Why?
+            //Find out the dR between the jet and the closest c hadron, print that and the dR between the jet and the closest c a
+            //write the events and relevant info to the text files
+            if (!eventAdded) {
+                eventJSON << eventAddress << "\n";
+                eventINFO << eventAddress << "\n";
+                eventINFO << "\n";
+                eventINFO << "Jet ET: " << jetEt << "\n";
+                eventINFO << "Jet Eta: " << jetEta << "\n";
+                eventINFO << "Jet Phi: " << jetPhi << "\n";
+                eventINFO << "Jet Rapidity" << jetRapidity << "\n";
+                if (closestGhostParton) {
+                    eventINFO << "pdgid of closest ghost parton: " << closestGhostParton->pdgId() << "\n";
+                    eventINFO << "dR between closest ghost parton and jet: " << closestGhostPartonDr << "\n";
+                }
+                else{
+                    eventINFO << "No matched ghost partons...um...why? Should be matched to a C; INVESTIGATE!" << "\n";
+                }
+                if (closestCHadron) {
+                    eventINFO << "pT of closest C Hadron: " << closestCHadron->pt() << "\n";
+                    eventINFO << "Eta of closest C Hadron: " << closestCHadron->eta() << "\n";
+                    eventINFO << "Phi of closest C Hadron: " << closestCHadron->phi() << "\n";
+                    double chadjetdrrap = DeltaR_Rapidity(iJet,const_cast<reco::GenParticle*>(closestCHadron));
+                    eventINFO << "DR (rapidity) between closest C Hadron and Jet: " << chadjetdrrap << "\n";
+                }
+                else{
+                    eventINFO << "NO C HADRON IN THE EVENT!!!" << "\n";
+                }
+                eventINFO << "--------------------------" << "\n" << "\n";
+                eventAdded = true;
+            }
         }
         else if (matchedtoLightPartonGhost && matchedtoBHadronGhost) {
             partonGhostNum = 2;
@@ -683,29 +726,23 @@ JetMatchingAnalyzer::beginJob()
 void
 JetMatchingAnalyzer::endJob()
 {
-    cout << "Got here! 1" << endl;
     oldPartonNewHadronMatchMatrix = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRC ) ));
     oldPartonNewHadronMatchMatrixPt20 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt20 ) ));
     oldPartonNewHadronMatchMatrixPt30 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt30 ) ));
     oldPartonNewHadronMatchMatrixPt50 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt50 ) ));
     oldPartonNewHadronMatchMatrixPt100 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt100 ) ));
     
-    cout << "Got here! 2" << endl;
-    
     oldPartonNewHadronMatchMatrix->SetName("oldPartonNewHadronMatchMatrix"); cout << "Issue 0" << endl;
-    oldPartonNewHadronMatchMatrixPt20->SetName("oldPartonNewHadronMatchMatrixPt20"); cout << "Issue 20" << endl;
-    oldPartonNewHadronMatchMatrixPt30->SetName("oldPartonNewHadronMatchMatrixPt30"); cout << "Issue 30" << endl;
-    oldPartonNewHadronMatchMatrixPt50->SetName("oldPartonNewHadronMatchMatrixPt50"); cout << "Issue 50" << endl;
-    oldPartonNewHadronMatchMatrixPt100->SetName("oldPartonNewHadronMatchMatrixPt100"); cout << "Issue 100" << endl;
-    
-    cout << "Got here! 3" << endl;
+    oldPartonNewHadronMatchMatrixPt20->SetName("oldPartonNewHadronMatchMatrixPt20");
+    oldPartonNewHadronMatchMatrixPt30->SetName("oldPartonNewHadronMatchMatrixPt30");
+    oldPartonNewHadronMatchMatrixPt50->SetName("oldPartonNewHadronMatchMatrixPt50");
+    oldPartonNewHadronMatchMatrixPt100->SetName("oldPartonNewHadronMatchMatrixPt100");
     
     newPartonNewHadronMatchMatrixHadronNorm = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRC ) ));
     newPartonNewHadronMatchMatrixHadronNormPt20 = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRCPt20 ) ));
     newPartonNewHadronMatchMatrixHadronNormPt30 = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRCPt30 ) ));
     newPartonNewHadronMatchMatrixHadronNormPt50 = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRCPt50 ) ));
     newPartonNewHadronMatchMatrixHadronNormPt100 = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRCPt100 ) ));
-    cout << "Got here! 4" << endl;
     
     newPartonNewHadronMatchMatrixHadronNorm->SetName("newPartonNewHadronMatchMatrixHadronNorm");
     newPartonNewHadronMatchMatrixHadronNormPt20->SetName("newPartonNewHadronMatchMatrixHadronNormPt20");
@@ -724,7 +761,8 @@ JetMatchingAnalyzer::endJob()
     newPartonNewHadronMatchMatrixPartonNormPt30->SetName("newPartonNewHadronMatchMatrixPartonNormPt30");
     newPartonNewHadronMatchMatrixPartonNormPt50->SetName("newPartonNewHadronMatchMatrixPartonNormPt50");
     newPartonNewHadronMatchMatrixPartonNormPt100->SetName("newPartonNewHadronMatchMatrixPartonNormPt100");
-    //loop over bin numbers to fill normalized histograms.  Start with normalizing by parton match # for old
+    //loop over bin numbers to fill normalized histograms.  Start with normalizing by parton match # for old.
+    //NOTE: IF RUNNING MULTIPLE JOBS OVER CRAB AND HADDING THE JOB OUTPUTS, THE CONTENT OF THESE HISTOGRAMS IS NONSENSICAL (PERCENTAGES AREN'T ADDITIVE...)
     for (unsigned int i=1; i <= 4; i++) {
         double numMatchedToParton0 = oldPartonNewHadronMatchMatrixRC->Integral(i,i,1,3);
         double numMatchedToParton20 = oldPartonNewHadronMatchMatrixRCPt20->Integral(i,i,1,3);
@@ -772,120 +810,6 @@ JetMatchingAnalyzer::endJob()
         }
         
     }
-
-    //change bin labels to alphanumeric
-//    oldPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRC->GetYaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRC->GetYaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRC->GetYaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    oldPartonNewHadronMatchMatrixRC->GetXaxis()->SetTitle("Parton Match Flavor");
-//    oldPartonNewHadronMatchMatrixRC->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetTitle("Parton Match Flavor");
-//    oldPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetTitle("Parton Match Flavor");
-//    oldPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetTitle("Parton Match Flavor");
-//    oldPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetBinLabel(1,"b");
-//    oldPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetBinLabel(2,"c");
-//    oldPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetBinLabel(3,"light");
-//    oldPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    oldPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetTitle("Parton Match Flavor");
-//    oldPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    
-//    newPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRC->GetYaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRC->GetYaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRC->GetYaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRC->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    newPartonNewHadronMatchMatrixRC->GetXaxis()->SetTitle("Parton Ghost Match Flavor");
-//    newPartonNewHadronMatchMatrixRC->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    newPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    newPartonNewHadronMatchMatrixRCPt20->GetXaxis()->SetTitle("Parton Ghost Match Flavor");
-//    newPartonNewHadronMatchMatrixRCPt20->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    newPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    newPartonNewHadronMatchMatrixRCPt30->GetXaxis()->SetTitle("Parton Ghost Match Flavor");
-//    newPartonNewHadronMatchMatrixRCPt30->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    newPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    newPartonNewHadronMatchMatrixRCPt50->GetXaxis()->SetTitle("Parton Ghost Match Flavor");
-//    newPartonNewHadronMatchMatrixRCPt50->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-//    
-//    newPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetBinLabel(1,"b");
-//    newPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetBinLabel(2,"c");
-//    newPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetBinLabel(3,"light");
-//    newPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetBinLabel(4,"no match");
-//    
-//    newPartonNewHadronMatchMatrixRCPt100->GetXaxis()->SetTitle("Parton Ghost Match Flavor");
-//    newPartonNewHadronMatchMatrixRCPt100->GetYaxis()->SetTitle("Hadron Ghost Match Flavor");
-    
-    
 }
 
 // ------------ method called when starting to processes a run  ------------
