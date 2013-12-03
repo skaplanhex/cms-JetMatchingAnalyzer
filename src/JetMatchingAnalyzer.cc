@@ -562,14 +562,14 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             //these are events where a jet was matched to a c parton ghost but NOT a c (or a b) hadron ghost.  Why?
             //Find out the dR between the jet and the closest c hadron, print that and the dR between the jet and the closest c a
             //write the events and relevant info to the text files
-            if (!eventAdded) {
+            if (!eventAdded && jetPt > 50) {
                 eventJSON << eventAddress << "\n";
                 eventINFO << eventAddress << "\n";
                 eventINFO << "\n";
                 eventINFO << "Jet ET: " << jetEt << "\n";
                 eventINFO << "Jet Eta: " << jetEta << "\n";
                 eventINFO << "Jet Phi: " << jetPhi << "\n";
-                eventINFO << "Jet Rapidity" << jetRapidity << "\n";
+                eventINFO << "Jet Rapidity: " << jetRapidity << "\n";
                 if (closestGhostParton) {
                     eventINFO << "pdgid of closest ghost parton: " << closestGhostParton->pdgId() << "\n";
                     eventINFO << "dR between closest ghost parton and jet: " << closestGhostPartonDr << "\n";
