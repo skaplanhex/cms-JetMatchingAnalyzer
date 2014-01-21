@@ -81,6 +81,9 @@ public:
     
 private:
     virtual void beginJob() ;
+    virtual const char* partonFlavourToChar(int);
+    virtual const char* hadronFlavourToChar(int);
+    virtual void analyzeJet(const reco::Jet* , const reco::JetFlavourInfo&, const reco::GenParticleRef,const double);
     virtual void analyze(const edm::Event&, const edm::EventSetup&);
     virtual void endJob() ;
     
@@ -91,12 +94,15 @@ private:
     virtual double DeltaR_Rapidity(const reco::Candidate* const cand1, const reco::Candidate* const cand2);
     // ----------member data ---------------------------
     edm::Service<TFileService> fs;
-    edm::InputTag particleSrc, partonFlavourByRefSrc, jetFlavourInfos_;
+    edm::InputTag particleSrc, jets_, jetFlavourByRefSrc, subjetFlavourByRefSrc, jetFlavourInfos_, subjetFlavourInfos_,groomedJets_;
     edm::Handle< reco::GenParticleCollection > particles;
-    edm::Handle<reco::JetFlavourInfoMatchingCollection> theJetFlavourInfos;
-    edm::Handle< reco::JetMatchedPartonsCollection > jetFlavourByRefMatches;
+    edm::Handle< edm::View< reco::Jet > > jets, groomedJets;
+    edm::Handle<reco::JetFlavourInfoMatchingCollection> theJetFlavourInfos,subjetFlavourInfos;
+    edm::Handle< reco::JetMatchedPartonsCollection > jetFlavourByRefMatches,subjetFlavourByRefMatches;
+    bool useSubjets;
     double hadronMatchDr;
     double jetPtCut;
+    int heavyID;
     TH2D* oldPartonNewHadronMatchMatrixRC;
     TH2D* oldPartonNewHadronMatchMatrixRCPt20;
     TH2D* oldPartonNewHadronMatchMatrixRCPt30;
@@ -126,6 +132,13 @@ private:
     TH2D* newPartonNewHadronMatchMatrixPartonNormPt30;
     TH2D* newPartonNewHadronMatchMatrixPartonNormPt50;
     TH2D* newPartonNewHadronMatchMatrixPartonNormPt100;
+
+    TH2D* oneSubjetHadronFlavour; //b/c/light as fn of pT
+    TH2D* twoSubjetsHadronFlavourPT300; //matrix, b/c/light X b/c/light
+    TH2D* twoSubjetsHadronFlavourPT500;
+    TH2D* twoSubjetsHadronFlavourPT1000;
+
+    TH2D* threeSubjetsHadronFlavour; //possible cases (no b, one b, two b, three b) as fn of pT
     
     
     TH2D* ghostHadronJetDr_JetPt;
@@ -144,25 +157,11 @@ private:
     TH1D* hJetEtaALL;
     TH1D* hJetPtALL;
     TH1D* hJetPhiALL;
+    TH2D* hNumSubjets;
     
     //ofstreams to make text files of events in each category
     ofstream eventJSON;
     ofstream eventINFO;
-     
-     /*ofstream bparton_chadron_eventINFO;
-     ofstream bparton_chadron_eventJSON;
-     ofstream bparton_lighthadron_eventINFO;
-     ofstream bparton_lighthadron_eventJSON;
-     
-     ofstream cparton_bhadron_eventINFO;
-     ofstream cparton_bhadron_eventJSON;
-     ofstream cparton_lighthadron_eventINFO;
-     ofstream cparton_lighthadron_eventJSON;
-     
-     ofstream lightparton_bhadron_eventINFO;
-     ofstream lightparton_bhadron_eventJSON;
-     ofstream lightparton_chadron_eventINFO;
-     ofstream lightparton_chadron_eventJSON;*/
 };
 
 //
@@ -180,29 +179,21 @@ JetMatchingAnalyzer::JetMatchingAnalyzer(const edm::ParameterSet& iConfig)
 
 {
     //get the parameters given in the config file
+    useSubjets = iConfig.getParameter<bool>("useSubjets");
     particleSrc = iConfig.getParameter<InputTag>("particleSource");
+    jets_ = ( iConfig.exists("jets") ? iConfig.getParameter<InputTag>("jets") : edm::InputTag() );
     jetFlavourInfos_ = iConfig.getParameter<edm::InputTag> ("jetFlavourInfos");
-    partonFlavourByRefSrc = iConfig.getParameter<InputTag>("srcByRef");
+    jetFlavourByRefSrc = iConfig.getParameter<InputTag>("jetFlavourByRef");
+    subjetFlavourByRefSrc = ( iConfig.exists("subjetFlavourByRef") ? iConfig.getParameter<edm::InputTag>("subjetFlavourByRef") : edm::InputTag() );
     hadronMatchDr = iConfig.getParameter<double>("hadronMatchDr");
     jetPtCut = iConfig.getParameter<double>("jetPtCut");
+    heavyID = ( iConfig.exists("heavyID") ? iConfig.getParameter<int>("heavyID") : 0 );
+    subjetFlavourInfos_ = ( iConfig.exists("subjetFlavourInfos") ? iConfig.getParameter<edm::InputTag>("subjetFlavourInfos") : edm::InputTag() );
+    groomedJets_ = ( iConfig.exists("groomedJets") ? iConfig.getParameter<edm::InputTag>("groomedJets") : edm::InputTag() );
     
     //initialize filenames for each ofstream
-    eventJSON.open("eventJSON.txt");
-    eventINFO.open("eventINFO.txt");
-     /*bparton_chadron_eventINFO.open("bparton_chadron_eventINFO.txt");
-     bparton_chadron_eventJSON.open("bparton_chadron_eventJSON.txt");
-     bparton_lighthadron_eventINFO.open("bparton_lighthadron_eventINFO.txt");
-     bparton_lighthadron_eventJSON.open("bparton_lighthadron_eventJSON.txt");
-     
-     cparton_bhadron_eventINFO.open("cparton_bhadron_eventINFO.txt");
-     cparton_bhadron_eventJSON.open("cparton_bhadron_eventJSON.txt");
-     cparton_lighthadron_eventINFO.open("cparton_lighthadron_eventINFO.txt");
-     cparton_lighthadron_eventJSON.open("cparton_lighthadron_eventJSON.txt");
-     
-     lightparton_bhadron_eventINFO.open("lightparton_bhadron_eventINFO.txt");
-     lightparton_bhadron_eventJSON.open("lightparton_bhadron_eventJSON.txt");
-     lightparton_chadron_eventINFO.open("lightparton_chadron_eventINFO.txt");
-     lightparton_chadron_eventJSON.open("lightparton_chadron_eventJSON.txt"); */
+    //eventJSON_c.open("eventJSON.txt");
+    //eventINFO_c.open("eventINFO.txt");
 }
 
 
@@ -211,24 +202,8 @@ JetMatchingAnalyzer::~JetMatchingAnalyzer()
     
     // do anything here that needs to be done at desctruction time
     // (e.g. close files, deallocate resources etc.)
-    
-    //once all the events are processed, close filestreams
-    eventJSON.close();
-    eventINFO.close();
-     /*bparton_chadron_eventINFO.close();
-     bparton_chadron_eventJSON.close();
-     bparton_lighthadron_eventINFO.close();
-     bparton_lighthadron_eventJSON.close();
-     
-     cparton_bhadron_eventINFO.close();
-     cparton_bhadron_eventJSON.close();
-     cparton_lighthadron_eventINFO.close();
-     cparton_lighthadron_eventJSON.close();
-     
-     lightparton_bhadron_eventINFO.close();
-     lightparton_bhadron_eventJSON.close();
-     lightparton_chadron_eventINFO.close();
-     lightparton_chadron_eventJSON.close(); */
+    //eventJSON.close();
+    //eventINFO.close();
     
 }
 
@@ -247,20 +222,381 @@ JetMatchingAnalyzer::DeltaR_Rapidity(const reco::Candidate* const cand1, const r
     return std::sqrt((r1-r2)*(r1-r2)+dp*dp);
     
 }
+const char*
+JetMatchingAnalyzer::partonFlavourToChar(int flav)
+{
+    if (flav == 1){
+        return "d";
+    }
+    else if (flav == 2){
+        return "u";
+    }
+    else if (flav == 3){
+        return "s";
+    }
+    else if(flav == 4){
+        return "c";
+    }
+    else if (flav == 5){
+        return "b";
+    }
+    else if (flav == 21){
+        return "g";
+    }
+    else{
+        throw cms::Exception("PDGID Issue") << "PDGID Not recognized, investigate!";
+    }
+}
+const char*
+JetMatchingAnalyzer::hadronFlavourToChar(int flav)
+{
+    if (flav == 0){
+        return "light";
+    }
+    else if(flav == 4){
+        return "c";
+    }
+    else if (flav == 5){
+        return "b";
+    }
+    else{
+        throw cms::Exception("PDGID Issue") << "PDGID Not recognized, investigate!";
+    }
+}
+void
+JetMatchingAnalyzer::analyzeJet(const reco::Jet* iJet, const reco::JetFlavourInfo& aInfo, const reco::GenParticleRef partonRef, const double ungroomedJetPt){
+    math::XYZTLorentzVector jetp4 = iJet->p4();
+    double jetEt = iJet->et();
+    double jetPt = iJet->pt();
+    double jetRapidity = iJet->rapidity();
+    double jetEta = iJet->eta();
+    double jetPhi = iJet->phi();
+    
+    const reco::GenParticleRefVector & bHadrons = aInfo.getbHadrons();
+    const reco::GenParticleRefVector & cHadrons = aInfo.getcHadrons();
+    const reco::GenParticleRefVector & partons = aInfo.getPartons();
+    bool matchedToGhostHadron = (bHadrons.size() != 0) || (cHadrons.size() != 0);
+    
+    
+    //loop through b and c hadron ghost matches to get the dR between the jet and the closest ghost
+    reco::GenParticle* closestGhostHadron = NULL;
+    double closestGhostHadronDr = 10000;
+    for(reco::GenParticleRefVector::const_iterator it = bHadrons.begin(); it != bHadrons.end(); ++it){
+        const reco::GenParticle* hadron = &(*(*it));
+        double dr = DeltaR_Rapidity(iJet,hadron);
+        if (dr < closestGhostHadronDr) {
+            closestGhostHadronDr = dr;
+            closestGhostHadron = const_cast< reco::GenParticle* >(hadron);
+        }
+    }
+    for(reco::GenParticleRefVector::const_iterator it = cHadrons.begin(); it != cHadrons.end(); ++it){
+        const reco::GenParticle* hadron = &(*(*it));
+        double dr = DeltaR_Rapidity(iJet,hadron);
+        if (dr < closestGhostHadronDr) {
+            closestGhostHadronDr = dr;
+            closestGhostHadron = const_cast< reco::GenParticle* >(hadron);
+        }
+    }
+    if (matchedToGhostHadron) {
+        //cout << matchedToGhostHadron << " " << jetPt << " " << closestGhostHadronDr << endl;
+        ghostHadronJetDr_JetPt->Fill(jetPt,closestGhostHadronDr);
+    }
+    //loop over parton ghost matches to get the dR between the jet and the closest parton ghost
+    reco::GenParticle* closestGhostParton = NULL;
+    double closestGhostPartonDr = 10000;
+    for(reco::GenParticleRefVector::const_iterator it = partons.begin(); it != partons.end(); ++it){
+        const reco::GenParticle* parton = &(*(*it));
+        double dr = DeltaR_Rapidity(iJet,parton);
+        if (dr < closestGhostPartonDr) {
+            closestGhostPartonDr = dr;
+            closestGhostParton = const_cast< reco::GenParticle* >(parton);
+        }
+    }
+    //old parton matching
+    bool matchedToBQuark;
+    bool matchedToCQuark;
+    bool matchedToLightFlavor;
+    bool notMatchedToParton;
+    
+    if (partonRef.isNull()) { //if there is no matched parton
+        matchedToBQuark = false;
+        matchedToCQuark = false;
+        matchedToLightFlavor = false;
+        notMatchedToParton = true;
+    }
+    else {
+        const reco::Candidate* parton = partonRef.get();
+        const int iPartonFlav = parton->pdgId();
+        matchedToBQuark = (abs(iPartonFlav) == 5);
+        matchedToCQuark = (abs(iPartonFlav) == 4);
+        matchedToLightFlavor = ((abs(iPartonFlav) == 1) || (abs(iPartonFlav) == 2) || (abs(iPartonFlav) == 3) || iPartonFlav == 21);
+        //if not matched to b, c, or light parton
+        notMatchedToParton = (!matchedToBQuark) && (!matchedToCQuark) && (!matchedToLightFlavor);
+    }
+    
+    //ghost matching
+    bool matchedToBHadronGhost = false;
+    bool matchedToCHadronGhost = false;
+    bool matchedToLightHadronGhost = true;
+    
+    bool matchedToBPartonGhost = false;
+    bool matchedToCPartonGhost = false;
+    bool matchedToLightPartonGhost = false;
+    bool notMatchedToPartonGhost = false;
+    
+    int partonGhostFlavour = aInfo.getPartonFlavour();
+    int hadronGhostFlavour = aInfo.getHadronFlavour();
+    
+    //fill booleans for parton ghosts
+    if (partonGhostFlavour == 4)
+        matchedToCPartonGhost = true;
+    else if (partonGhostFlavour == 5)
+        matchedToBPartonGhost = true;
+    else if (partonGhostFlavour == 1 || partonGhostFlavour == 2 || partonGhostFlavour == 3 || partonGhostFlavour == 21)
+        matchedToLightPartonGhost = true;
+    else
+        notMatchedToPartonGhost = true;
+    
+    //fill booleans for hadron ghosts.  If flavour isn't 4 or 5, it's zero, so keep default booleans
+    if (hadronGhostFlavour == 4) {
+        matchedToCHadronGhost = true;
+        matchedToLightHadronGhost = false;
+    }
+    else if (hadronGhostFlavour == 5){
+        matchedToBHadronGhost = true;
+        matchedToLightHadronGhost = false;
+    }
+    
+    //Do stuff needing a loop over genParticles
+    bool matchedToBHadron = false; //for now
+    bool matchedToCHadron = false; //for now
+    bool matchedToLightHadron = true; //for now.  We assume the jet is a light jet unless matched otherwise.  If otherwise matched, this will be set to false.
+    double jetBHadronDr = 10000.; //dr between jet and closest b hadron
+    double jetCHadronDr = 10000.; //dr between jet and closest c hadron
+    double jetBQuarkDr = 10000.;
+    double jetCQuarkDr = 10000.;
+    reco::GenParticle* closestBHadron = NULL;
+    reco::GenParticle* closestCHadron = NULL;
+    reco::GenParticle* closestBQuark = NULL;
+    reco::GenParticle* closestCQuark = NULL;
+    for (reco::GenParticleCollection::const_iterator iGenPart = particles->begin(); iGenPart != particles->end(); ++iGenPart) {
 
+        double jetParticleDr = reco::deltaR(jetp4, iGenPart->p4());
+        int absPartID = abs(iGenPart->pdgId());
+        // if the gen particle is a b hadron
+        if (((absPartID/100)%10 == 5 || (absPartID/1000)%10 == 5)) {
+            if (jetParticleDr < hadronMatchDr){
+                matchedToBHadron = true;
+                matchedToLightHadron = false; //if matched to a b, it obviously isn't matched to light
+            }
+            if (jetParticleDr < jetBHadronDr) {
+                closestBHadron = const_cast< reco::GenParticle* >(&(*iGenPart));
+                //cout << "b hadron dr: " << jetParticleDr << endl;
+                jetBHadronDr = jetParticleDr;
+            }
+        }
+        // if the gen particle is a c hadron
+        else if ( ((absPartID/100)%10 == 4 || (absPartID/1000)%10 == 4) ) {
+            if (jetParticleDr < hadronMatchDr){
+                matchedToCHadron = true;
+                matchedToLightHadron = false;
+            }
+            if (jetParticleDr < jetCHadronDr) {
+                closestCHadron = const_cast< reco::GenParticle* >(&(*iGenPart));
+                //                    cout << "c hadron dr: " << jetParticleDr << endl;
+                jetCHadronDr = jetParticleDr;
+            }
+        }
+        //b quark stuff
+        else if (absPartID == 5){
+            if (jetParticleDr < jetBQuarkDr) {
+                closestBQuark = const_cast< reco::GenParticle* >(&(*iGenPart));
+                jetBQuarkDr = jetParticleDr;
+            }
+        }
+        else if (absPartID == 4){
+            if (jetParticleDr < jetCQuarkDr) {
+                closestCQuark = const_cast< reco::GenParticle* >(&(*iGenPart));
+                jetCQuarkDr = jetParticleDr;
+            }
+        }
+    } //end loop over genParticles
+    
+    
+    //first fill histograms for all jets, then fill for jets who fail parton matching
+    std::vector< const reco::Candidate* > jetConstituents = iJet->getJetConstituentsQuick();
+    for (unsigned int i=0; i<jetConstituents.size(); i++) {
+        hJetConstituentTypeALL->Fill( jetConstituents[i]->pdgId() );
+    }
+    hJetEtaALL->Fill(jetEta);
+    hJetPtALL->Fill(jetPt);
+    hJetPhiALL->Fill(jetPhi);
+    hJetConstituentNumALL->Fill( iJet->nConstituents() );
+    
+    //for all combinations, choose bins to fill in the match matrix depending on the case
+    
+    // convention for partonNum and ghostHadronNum:
+    // b flavor := 0
+    // c flavor := 1
+    // light flavor := 2
+    // flavor failure := 3 (only valid for partons, all jets not clustered with b or c hadrons are assumed to be light)
+    
+    int partonNum = -100;
+    int ghostHadronNum = -100;
+    
+    if (matchedToBQuark && matchedToBHadronGhost) {
+        partonNum = 0;
+        ghostHadronNum = 0;
+    }
+    else if (matchedToBQuark && matchedToCHadronGhost){
+        partonNum = 0;
+        ghostHadronNum = 1;
+    }
+    else if (matchedToBQuark && matchedToLightHadronGhost) {
+        partonNum = 0;
+        ghostHadronNum = 2;
+    }
+    else if (matchedToCQuark && matchedToBHadronGhost) {
+        partonNum = 1;
+        ghostHadronNum = 0;
+    }
+    else if (matchedToCQuark && matchedToCHadronGhost){
+        partonNum = 1;
+        ghostHadronNum = 1;
+    }
+    else if (matchedToCQuark && matchedToLightHadronGhost) {
+        partonNum = 1;
+        ghostHadronNum = 2;
+    }
+    else if (matchedToLightFlavor && matchedToBHadronGhost) {
+        partonNum = 2;
+        ghostHadronNum = 0;
+    }
+    else if (matchedToLightFlavor && matchedToCHadronGhost){
+        partonNum = 2;
+        ghostHadronNum = 1;
+    }
+    else if (matchedToLightFlavor && matchedToLightHadronGhost) {
+        partonNum = 2;
+        ghostHadronNum = 2;
+    }
+    else if (notMatchedToParton && matchedToBHadronGhost) {
+        partonNum = 3;
+        ghostHadronNum = 0;
+    }
+    else if (notMatchedToParton && matchedToCHadronGhost){
+        partonNum = 3;
+        ghostHadronNum = 1;
+    }
+    else if (notMatchedToParton && matchedToLightHadronGhost) {
+        partonNum = 3;
+        ghostHadronNum = 2;
+    }
+    
+    if (fabs(jetEta) < 2.5) {
+        //fill matrix without pt cut for comparison
+        oldPartonNewHadronMatchMatrixRC->Fill(partonNum,ghostHadronNum);
+        
+        //fill matrices based on pt cut
+        if (ungroomedJetPt > 1000) {
+            oldPartonNewHadronMatchMatrixRCPt100->Fill(partonNum,ghostHadronNum);
+        }
+        if (ungroomedJetPt > 500) {
+            oldPartonNewHadronMatchMatrixRCPt50->Fill(partonNum,ghostHadronNum);
+        }
+        if (ungroomedJetPt > 300) {
+            oldPartonNewHadronMatchMatrixRCPt30->Fill(partonNum,ghostHadronNum);
+        }
+        if (ungroomedJetPt > 200) {
+            oldPartonNewHadronMatchMatrixRCPt20->Fill(partonNum,ghostHadronNum);
+        }
+    }//end eta if statement
+    
+    // parton ghost hadron ghost comparison
+    int partonGhostNum = -100;
+    ghostHadronNum = -100;
+    
+    if (matchedToBPartonGhost && matchedToBHadronGhost) {
+        partonGhostNum = 0;
+        ghostHadronNum = 0;
+    }
+    else if (matchedToBPartonGhost && matchedToCHadronGhost){
+        partonGhostNum = 0;
+        ghostHadronNum = 1;
+    }
+    else if (matchedToBPartonGhost && matchedToLightHadronGhost) {
+        partonGhostNum = 0;
+        ghostHadronNum = 2;
+    }
+    else if (matchedToBPartonGhost && matchedToBHadronGhost) {
+        partonGhostNum = 1;
+        ghostHadronNum = 0;
+    }
+    else if (matchedToCPartonGhost && matchedToCHadronGhost){
+        partonGhostNum = 1;
+        ghostHadronNum = 1;
+    }
+    else if (matchedToCPartonGhost && matchedToLightHadronGhost) {
+        partonGhostNum = 1;
+        ghostHadronNum = 2;
+    }
+    else if (matchedToLightPartonGhost && matchedToBHadronGhost) {
+        partonGhostNum = 2;
+        ghostHadronNum = 0;
+    }
+    else if (matchedToLightPartonGhost && matchedToCHadronGhost){
+        partonGhostNum = 2;
+        ghostHadronNum = 1;
+    }
+    else if (matchedToLightPartonGhost && matchedToLightHadronGhost) {
+        partonGhostNum = 2;
+        ghostHadronNum = 2;
+    }
+    else if (notMatchedToPartonGhost && matchedToBHadronGhost) {
+        partonGhostNum = 3;
+        ghostHadronNum = 0;
+    }
+    else if (notMatchedToPartonGhost && matchedToCHadronGhost){
+        partonGhostNum = 3;
+        ghostHadronNum = 1;
+    }
+    else if (notMatchedToPartonGhost && matchedToLightHadronGhost) {
+        partonGhostNum = 3;
+        ghostHadronNum = 2;
+    }
+    if (fabs(jetEta) < 2.5) {
+        //fill matrix without pt cut for comparison
+        newPartonNewHadronMatchMatrixRC->Fill(partonGhostNum,ghostHadronNum);
+        
+        //fill matrices based on pt cut
+        if (jetPt > 1000) {
+            newPartonNewHadronMatchMatrixRCPt100->Fill(partonGhostNum,ghostHadronNum);
+        }
+        if (jetPt > 500) {
+            newPartonNewHadronMatchMatrixRCPt50->Fill(partonGhostNum,ghostHadronNum);
+        }
+        if (jetPt > 300) {
+            newPartonNewHadronMatchMatrixRCPt30->Fill(partonGhostNum,ghostHadronNum);
+        }
+        if (jetPt > 200) {
+            newPartonNewHadronMatchMatrixRCPt20->Fill(partonGhostNum,ghostHadronNum);
+        }
+    }//end eta if statement
+    
+}
 // ------------ method called for each event  ------------
 void
 JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetup)
 {
     using namespace std;
-        unsigned int lumi = iEvent.luminosityBlock();
-        unsigned int run = iEvent.run();
-        unsigned int event = iEvent.id().event();
+    unsigned int lumi = iEvent.luminosityBlock();
+    unsigned int run = iEvent.run();
+    unsigned int event = iEvent.id().event();
     
-        stringstream ss;
-        ss << run << ":" << lumi << ":" << event;
-        string eventAddress = ss.str();
-        bool eventAdded = false;
+    stringstream ss;
+    ss << run << ":" << lumi << ":" << event;
+    string eventAddress = ss.str();
+    //bool eventAdded = false;
     
     
     //    cout << eventAddress << endl;
@@ -269,370 +605,113 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
     //    cout << "event: " << event << endl;
     //    myFile << eventAddress;
     
-    
     iEvent.getByLabel(particleSrc,particles);
-    iEvent.getByLabel(partonFlavourByRefSrc,jetFlavourByRefMatches);
+    iEvent.getByLabel(jets_, jets);
+    iEvent.getByLabel(jetFlavourByRefSrc,jetFlavourByRefMatches);
     iEvent.getByLabel(jetFlavourInfos_ , theJetFlavourInfos );
-    
     for (reco::JetFlavourInfoMatchingCollection::const_iterator iMatch = theJetFlavourInfos->begin(); iMatch != theJetFlavourInfos->end(); ++iMatch) {
-        
         int currentIndex = iMatch - theJetFlavourInfos->begin();
-        
         const reco::Jet* iJet  = (*iMatch).first.get();
         const reco::JetFlavourInfo aInfo = (*iMatch).second;
-        const reco::GenParticleRefVector & bHadrons = aInfo.getbHadrons();
-        const reco::GenParticleRefVector & cHadrons = aInfo.getcHadrons();
-        const reco::GenParticleRefVector & partons = aInfo.getPartons();
-        bool matchedtoGhostHadron = (bHadrons.size() != 0) || (cHadrons.size() != 0);
-        const reco::GenParticleRef partonRef = (*jetFlavourByRefMatches)[currentIndex].second.algoDefinitionParton();
-        math::XYZTLorentzVector jetp4 = iJet->p4();
-        double jetEt = iJet->et();
-        double jetPt = iJet->pt();
-        double jetRapidity = iJet->rapidity();
-        double jetEta = iJet->eta();
-        double jetPhi = iJet->phi();
-        
-        //loop through b and c hadron ghost matches to get the dR between the jet and the closest ghost
-        reco::GenParticle* closestGhostHadron = NULL;
-        double closestGhostHadronDr = 10000;
-        for(reco::GenParticleRefVector::const_iterator it = bHadrons.begin(); it != bHadrons.end(); ++it){
-            const reco::GenParticle* hadron = &(*(*it));
-            double dr = DeltaR_Rapidity(iJet,hadron);
-            if (dr < closestGhostHadronDr) {
-                closestGhostHadronDr = dr;
-                closestGhostHadron = const_cast< reco::GenParticle* >(hadron);
+        const double ungroomedJetPt = iJet->pt();
+        //if useSubjets is true, fill the subjet and flavour info vectors with the subjet / subjet flavour infos coming from the higgs or top jets
+        if (useSubjets){
+            if (heavyID == 0){
+                throw cms::Exception("Parameter Issue") << "You want to use subjet mode but did not define a pdgID to match ungroomed fat jets! Example: add heavyID = cms.int32(25) if you are looking at higgs jets.";
             }
-        }
-        for(reco::GenParticleRefVector::const_iterator it = cHadrons.begin(); it != cHadrons.end(); ++it){
-            const reco::GenParticle* hadron = &(*(*it));
-            double dr = DeltaR_Rapidity(iJet,hadron);
-            if (dr < closestGhostHadronDr) {
-                closestGhostHadronDr = dr;
-                closestGhostHadron = const_cast< reco::GenParticle* >(hadron);
-            }
-        }
-        if (matchedtoGhostHadron) {
-            //cout << matchedtoGhostHadron << " " << jetPt << " " << closestGhostHadronDr << endl;
-            ghostHadronJetDr_JetPt->Fill(jetPt,closestGhostHadronDr);
-        }
-        //loop over parton ghost matches to get the dR between the jet and the closest parton ghost
-        reco::GenParticle* closestGhostParton = NULL;
-        double closestGhostPartonDr = 10000;
-        for(reco::GenParticleRefVector::const_iterator it = partons.begin(); it != partons.end(); ++it){
-            const reco::GenParticle* parton = &(*(*it));
-            double dr = DeltaR_Rapidity(iJet,parton);
-            if (dr < closestGhostPartonDr) {
-                closestGhostPartonDr = dr;
-                closestGhostParton = const_cast< reco::GenParticle* >(parton);
-            }
-        }
-        //old parton matching
-        bool matchedtoBQuark;
-        bool matchedtoCQuark;
-        bool matchedtoLightFlavor;
-        bool notMatchedToParton;
-        
-        if (partonRef.isNull()) { //if there is no matched parton
-            matchedtoBQuark = false;
-            matchedtoCQuark = false;
-            matchedtoLightFlavor = false;
-            notMatchedToParton = true;
-        }
-        else {
-            const reco::Candidate* parton = partonRef.get();
-            const int iPartonFlav = parton->pdgId();
-            matchedtoBQuark = (abs(iPartonFlav) == 5);
-            matchedtoCQuark = (abs(iPartonFlav) == 4);
-            matchedtoLightFlavor = ((abs(iPartonFlav) == 1) || (abs(iPartonFlav) == 2) || (abs(iPartonFlav) == 3) || iPartonFlav == 21);
-            //if not matched to b, c, or light parton
-            notMatchedToParton = (!matchedtoBQuark) && (!matchedtoCQuark) && (!matchedtoLightFlavor);
-        }
-        
-        //ghost matching
-        bool matchedtoBHadronGhost = false;
-        bool matchedtoCHadronGhost = false;
-        bool matchedtoLightHadronGhost = true;
-        
-        bool matchedtoBPartonGhost = false;
-        bool matchedtoCPartonGhost = false;
-        bool matchedtoLightPartonGhost = false;
-        bool notMatchedToPartonGhost = false;
-        
-        int partonGhostFlavour = aInfo.getPartonFlavour();
-        int hadronGhostFlavour = aInfo.getHadronFlavour();
-        
-        //fill booleans for parton ghosts
-        if (partonGhostFlavour == 4)
-            matchedtoCPartonGhost = true;
-        else if (partonGhostFlavour == 5)
-            matchedtoBPartonGhost = true;
-        else if (partonGhostFlavour == 1 || partonGhostFlavour == 2 || partonGhostFlavour == 3 || partonGhostFlavour == 21)
-            matchedtoLightPartonGhost = true;
-        else
-            notMatchedToPartonGhost = true;
-        
-        //fill booleans for hadron ghosts.  If flavour isn't 4 or 5, it's zero, so keep default booleans
-        if (hadronGhostFlavour == 4) {
-            matchedtoCHadronGhost = true;
-            matchedtoLightHadronGhost = false;
-        }
-        else if (hadronGhostFlavour == 5){
-            matchedtoBHadronGhost = true;
-            matchedtoLightHadronGhost = false;
-        }
-        
-        //do the dr based hadron matching.  If there is a b or c hadron within a cone of hadronMatchDr, the jet is associated to that hadron
-        bool matchedtoBHadron = false; //for now
-        bool matchedtoCHadron = false; //for now
-        bool matchedtoLightHadron = true; //for now.  We assume the jet is a light jet unless matched otherwise.  If otherwise matched, this will be set to false.
-        double jetBHadronDr = 10000.; //dr between jet and closest b hadron
-        double jetCHadronDr = 10000.; //dr between jet and closest c hadron
-        double jetCQuarkDr = 10000.;
-        reco::GenParticle* closestBHadron = NULL;
-        reco::GenParticle* closestCHadron = NULL;
-        reco::GenParticle* closestCQuark = NULL;
-        for (reco::GenParticleCollection::const_iterator iGenPart = particles->begin(); iGenPart != particles->end(); ++iGenPart) {
-            double jetHadronDr = reco::deltaR(jetp4, iGenPart->p4());
-            int absPartID = abs(iGenPart->pdgId());
-            // if the gen particle is a b hadron
-            if (((absPartID/100)%10 == 5 || (absPartID/1000)%10 == 5)) {
-                if (jetHadronDr < hadronMatchDr){
-                    matchedtoBHadron = true;
-                    matchedtoLightHadron = false; //if matched to a b, it obviously isn't matched to light
-                }
-                if (jetHadronDr < jetBHadronDr) {
-                    closestBHadron = const_cast< reco::GenParticle* >(&(*iGenPart));
-                    //cout << "b hadron dr: " << jetHadronDr << endl;
-                    jetBHadronDr = jetHadronDr;
+            iEvent.getByLabel(groomedJets_, groomedJets);
+            iEvent.getByLabel(subjetFlavourByRefSrc,subjetFlavourByRefMatches);
+            iEvent.getByLabel(subjetFlavourInfos_,subjetFlavourInfos);
+            bool matchedToHeavy = false;
+            //loop over genParticles to see if the ungroommed fat jet is matched to a higgs/top
+            for (reco::GenParticleCollection::const_iterator iGenPart = particles->begin(); iGenPart != particles->end(); ++iGenPart) {
+                double jetParticleDr = reco::deltaR(iJet->p4(), iGenPart->p4());
+                int absPartID = abs(iGenPart->pdgId());
+                int particleStatus = iGenPart->status();
+                if ( (absPartID == heavyID) && (jetParticleDr < 0.3) && (particleStatus == 3) ){
+                    matchedToHeavy = true;
+                    break;
                 }
             }
-            // if the gen particle is a c hadron
-            else if ( ((absPartID/100)%10 == 4 || (absPartID/1000)%10 == 4) ) {
-                if (jetHadronDr < hadronMatchDr){
-                    matchedtoCHadron = true;
-                    matchedtoLightHadron = false;
-                }
-                if (jetHadronDr < jetCHadronDr) {
-                    closestCHadron = const_cast< reco::GenParticle* >(&(*iGenPart));
-                    //                    cout << "c hadron dr: " << jetHadronDr << endl;
-                    jetCHadronDr = jetHadronDr;
-                }
+            //if not matched to a higgs, go to the next jet...
+            if (!matchedToHeavy) {
+                continue;
             }
-            else if (absPartID == 4){
-                if (jetHadronDr < jetCQuarkDr) {
-                    closestCQuark = const_cast< reco::GenParticle* >(&(*iGenPart));
-                    jetCQuarkDr = jetHadronDr;
-                }
-            }
-        } //end loop over genParticles
-        
-        if (matchedtoBHadronGhost && closestBHadron) {
-            bGhostPt_JetPt->Fill(jetPt,closestBHadron->pt());
-        }
-        else if (matchedtoCHadronGhost && closestCHadron) {
-            cGhostPt_JetPt->Fill(jetPt,closestCHadron->pt());
-        }
-        if (matchedtoCHadronGhost && closestCHadron && matchedtoCQuark) {
-            cGhostPt_JetPt_COld->Fill(jetPt,closestCHadron->pt());
-        }
-        else if (matchedtoCHadronGhost && closestCHadron && matchedtoLightFlavor){
-            cGhostPt_JetPt_LightOld->Fill(jetPt,closestCHadron->pt());
-        }
-        
-        
-        
-        
-        
-        //first fill histograms for all jets, then fill for jets who fail parton matching
-        std::vector< const reco::Candidate* > jetConstituents = iJet->getJetConstituentsQuick();
-        for (unsigned int i=0; i<jetConstituents.size(); i++) {
-            hJetConstituentTypeALL->Fill( jetConstituents[i]->pdgId() );
-        }
-        hJetEtaALL->Fill(jetEta);
-        hJetPtALL->Fill(jetPt);
-        hJetPhiALL->Fill(jetPhi);
-        hJetConstituentNumALL->Fill( iJet->nConstituents() );
-        
-        //for all combinations, choose bins to fill in the match matrix depending on the case
-        
-        // convention for partonNum and ghostHadronNum:
-        // b flavor := 0
-        // c flavor := 1
-        // light flavor := 2
-        // flavor failure := 3 (only valid for partons, all jets not clustered with b or c hadrons are assumed to be light)
-        
-        int partonNum = -100;
-        int ghostHadronNum = -100;
-        
-        if (matchedtoBQuark && matchedtoBHadronGhost) {
-            partonNum = 0;
-            ghostHadronNum = 0;
-        }
-        else if (matchedtoBQuark && matchedtoCHadronGhost){
-            partonNum = 0;
-            ghostHadronNum = 1;
-        }
-        else if (matchedtoBQuark && matchedtoLightHadronGhost) {
-            partonNum = 0;
-            ghostHadronNum = 2;
-        }
-        else if (matchedtoCQuark && matchedtoBHadronGhost) {
-            partonNum = 1;
-            ghostHadronNum = 0;
-        }
-        else if (matchedtoCQuark && matchedtoCHadronGhost){
-            partonNum = 1;
-            ghostHadronNum = 1;
-        }
-        else if (matchedtoCQuark && matchedtoLightHadronGhost) {
-            partonNum = 1;
-            ghostHadronNum = 2;
-        }
-        else if (matchedtoLightFlavor && matchedtoBHadronGhost) {
-            partonNum = 2;
-            ghostHadronNum = 0;
-        }
-        else if (matchedtoLightFlavor && matchedtoCHadronGhost){
-            partonNum = 2;
-            ghostHadronNum = 1;
-        }
-        else if (matchedtoLightFlavor && matchedtoLightHadronGhost) {
-            partonNum = 2;
-            ghostHadronNum = 2;
-        }
-        else if (notMatchedToParton && matchedtoBHadronGhost) {
-            partonNum = 3;
-            ghostHadronNum = 0;
-        }
-        else if (notMatchedToParton && matchedtoCHadronGhost){
-            partonNum = 3;
-            ghostHadronNum = 1;
-        }
-        else if (notMatchedToParton && matchedtoLightHadronGhost) {
-            partonNum = 3;
-            ghostHadronNum = 2;
-        }
-        
-        if (fabs(jetEta) < 2.5) {
-            //fill matrix without pt cut for comparison
-            oldPartonNewHadronMatchMatrixRC->Fill(partonNum,ghostHadronNum);
+            //match the fat jet to a groomed jet, then get the subjets!
             
-            //fill matrices based on pt cut
-            if (jetPt > 100) {
-                oldPartonNewHadronMatchMatrixRCPt100->Fill(partonNum,ghostHadronNum);
+            // find matching groomed jet
+            double matchedDR = 1e9;
+            int matchedIdx = -1;
+            for(size_t gj=0; gj<groomedJets->size(); ++gj){
+                double tempDR = reco::deltaR( iJet->rapidity(), iJet->phi(), groomedJets->at(gj).rapidity(), groomedJets->at(gj).phi() );
+                if ( tempDR < matchedDR ) {
+                    matchedDR = tempDR;
+                    matchedIdx = gj;
+                }
             }
-            if (jetPt > 50) {
-                oldPartonNewHadronMatchMatrixRCPt50->Fill(partonNum,ghostHadronNum);
+            if( matchedIdx == -1 ){
+                throw cms::Exception("Jet matching failed") << "Matching groomed to original jets failed. Please check that the jet algorithm, jet size, and Pt threshold match for the two jet collections.";
             }
-            if (jetPt > 30) {
-                oldPartonNewHadronMatchMatrixRCPt30->Fill(partonNum,ghostHadronNum);
+            //now that we have the index of the matched groomed jet, use that index to look into the groomed jet collection to get the subjets
+            std::vector<int> subjetFlavours;
+            int subjetCounter = 0;
+            for(size_t s=0; s<groomedJets->at(matchedIdx).numberOfDaughters(); ++s){
+                //ONLY LOOK AT TWO HARDEST SUBJETS FOR HIGGS
+                subjetCounter++;
+                if (subjetCounter > 3) {break;}
+                const edm::Ptr<reco::Candidate> & subjet = groomedJets->at(matchedIdx).daughterPtr(s);
+                for ( reco::JetFlavourInfoMatchingCollection::const_iterator sj  = subjetFlavourInfos->begin(); sj != subjetFlavourInfos->end(); ++sj ) {
+                    //see if the subjet the iterator is on corresponds to the one being looped over from the groomed jet's daughters (i.e. its subjets)
+                    if( subjet != edm::Ptr<reco::Candidate>((*sj).first.id(), (*sj).first.get(), (*sj).first.key()) ) continue;
+                    int subjetIndex = sj - subjetFlavourInfos->begin();
+                    const reco::Jet *aSubjet = (*sj).first.get();
+                    const reco::JetFlavourInfo tempInfo = (*sj).second;
+                    subjetFlavours.push_back(tempInfo.getHadronFlavour());
+                    //assuming the subjet flavourinfos collection and jetmatchedpartons have the same order (think this is true, but should be tested!)
+                    const reco::GenParticleRef partonRef = (*subjetFlavourByRefMatches)[subjetIndex].second.algoDefinitionParton();
+                    analyzeJet(aSubjet,tempInfo,partonRef,ungroomedJetPt);
+                }
             }
-            if (jetPt > 20) {
-                oldPartonNewHadronMatchMatrixRCPt20->Fill(partonNum,ghostHadronNum);
+            //analyze subjet flavor combos and fill histograms!
+            int numberOfSubjets = subjetFlavours.size();
+            //fill histogram to see how many subjets there are for each matched groomed jet (hopefully VERY highly peaked at 2 for h->bb)
+            hNumSubjets->Fill(numberOfSubjets,ungroomedJetPt,1);
+            if (numberOfSubjets == 0){
+                throw cms::Exception("NO SUBJETS!") << "There were no subjets found...What's going on?";
             }
-        }//end eta if statement
+            else if (numberOfSubjets == 1){
+                int subjetFlav = subjetFlavours[0];
+                oneSubjetHadronFlavour->Fill( hadronFlavourToChar(subjetFlav), ungroomedJetPt,1 );
+            }
+            else if (numberOfSubjets == 2){
+                int subjetFlav1 = subjetFlavours[0];
+                int subjetFlav2 = subjetFlavours[1];
+                if (ungroomedJetPt > 300){
+                    twoSubjetsHadronFlavourPT300->Fill( hadronFlavourToChar(subjetFlav1), hadronFlavourToChar(subjetFlav2), 1 );
+                }
+                if (ungroomedJetPt > 500){
+                    twoSubjetsHadronFlavourPT500->Fill( hadronFlavourToChar(subjetFlav1), hadronFlavourToChar(subjetFlav2), 1 );
+                }
+                if (ungroomedJetPt > 1000){
+                    twoSubjetsHadronFlavourPT1000->Fill( hadronFlavourToChar(subjetFlav1), hadronFlavourToChar(subjetFlav2), 1 );
+                }
+            }
+            else if (numberOfSubjets == 3){
+                int numberOfB = 0;
+                for (int i = 0; i<3; i++){
+                    if (subjetFlavours[i] == 5){
+                        numberOfB++;
+                    }
+                }
+                threeSubjetsHadronFlavour->Fill(numberOfB, ungroomedJetPt,1);
+            }
+        }//end condition on useSubjets == true
+        //normal operation (i.e. if useSubjets == false)
+        else{
+            const reco::GenParticleRef partonRef = (*jetFlavourByRefMatches)[currentIndex].second.algoDefinitionParton();
+            analyzeJet(iJet,aInfo,partonRef,ungroomedJetPt);
+        }
         
-        // parton ghost hadron ghost comparison
-        int partonGhostNum = -100;
-        ghostHadronNum = -100;
-        
-        if (matchedtoBQuark && matchedtoBHadronGhost) {
-            partonGhostNum = 0;
-            ghostHadronNum = 0;
-        }
-        else if (matchedtoBPartonGhost && matchedtoCHadronGhost){
-            partonGhostNum = 0;
-            ghostHadronNum = 1;
-        }
-        else if (matchedtoBPartonGhost && matchedtoLightHadronGhost) {
-            partonGhostNum = 0;
-            ghostHadronNum = 2;
-        }
-        else if (matchedtoBPartonGhost && matchedtoBHadronGhost) {
-            partonGhostNum = 1;
-            ghostHadronNum = 0;
-        }
-        else if (matchedtoCPartonGhost && matchedtoCHadronGhost){
-            partonGhostNum = 1;
-            ghostHadronNum = 1;
-        }
-        else if (matchedtoCPartonGhost && matchedtoLightHadronGhost) {
-            partonGhostNum = 1;
-            ghostHadronNum = 2;
-            //these are events where a jet was matched to a c parton ghost but NOT a c (or a b) hadron ghost.  Why?
-            //Find out the dR between the jet and the closest c hadron, print that and the dR between the jet and the closest c a
-            //write the events and relevant info to the text files
-            if (!eventAdded && jetPt > 50) {
-                eventJSON << eventAddress << "\n";
-                eventINFO << eventAddress << "\n";
-                eventINFO << "\n";
-                eventINFO << "Jet ET: " << jetEt << "\n";
-                eventINFO << "Jet Eta: " << jetEta << "\n";
-                eventINFO << "Jet Phi: " << jetPhi << "\n";
-                eventINFO << "Jet Rapidity: " << jetRapidity << "\n";
-                if (closestGhostParton) {
-                    eventINFO << "pdgid of closest ghost parton: " << closestGhostParton->pdgId() << "\n";
-                    eventINFO << "dR between closest ghost parton and jet: " << closestGhostPartonDr << "\n";
-                }
-                else{
-                    eventINFO << "No matched ghost partons...um...why? Should be matched to a C; INVESTIGATE!" << "\n";
-                }
-                if (closestCHadron) {
-                    eventINFO << "pT of closest C Hadron: " << closestCHadron->pt() << "\n";
-                    eventINFO << "Eta of closest C Hadron: " << closestCHadron->eta() << "\n";
-                    eventINFO << "Phi of closest C Hadron: " << closestCHadron->phi() << "\n";
-                    double chadjetdrrap = DeltaR_Rapidity(iJet,const_cast<reco::GenParticle*>(closestCHadron));
-                    eventINFO << "DR (rapidity) between closest C Hadron and Jet: " << chadjetdrrap << "\n";
-                }
-                else{
-                    eventINFO << "NO C HADRON IN THE EVENT!!!" << "\n";
-                }
-                eventINFO << "--------------------------" << "\n" << "\n";
-                eventAdded = true;
-            }
-        }
-        else if (matchedtoLightPartonGhost && matchedtoBHadronGhost) {
-            partonGhostNum = 2;
-            ghostHadronNum = 0;
-        }
-        else if (matchedtoLightPartonGhost && matchedtoCHadronGhost){
-            partonGhostNum = 2;
-            ghostHadronNum = 1;
-        }
-        else if (matchedtoLightPartonGhost && matchedtoLightHadronGhost) {
-            partonGhostNum = 2;
-            ghostHadronNum = 2;
-        }
-        else if (notMatchedToPartonGhost && matchedtoBHadronGhost) {
-            partonGhostNum = 3;
-            ghostHadronNum = 0;
-        }
-        else if (notMatchedToPartonGhost && matchedtoCHadronGhost){
-            partonGhostNum = 3;
-            ghostHadronNum = 1;
-        }
-        else if (notMatchedToPartonGhost && matchedtoLightHadronGhost) {
-            partonGhostNum = 3;
-            ghostHadronNum = 2;
-        }
-        if (fabs(jetEta) < 2.5) {
-            //fill matrix without pt cut for comparison
-            newPartonNewHadronMatchMatrixRC->Fill(partonGhostNum,ghostHadronNum);
-            
-            //fill matrices based on pt cut
-            if (jetPt > 100) {
-                newPartonNewHadronMatchMatrixRCPt100->Fill(partonGhostNum,ghostHadronNum);
-            }
-            if (jetPt > 50) {
-                newPartonNewHadronMatchMatrixRCPt50->Fill(partonGhostNum,ghostHadronNum);
-            }
-            if (jetPt > 30) {
-                newPartonNewHadronMatchMatrixRCPt30->Fill(partonGhostNum,ghostHadronNum);
-            }
-            if (jetPt > 20) {
-                newPartonNewHadronMatchMatrixRCPt20->Fill(partonGhostNum,ghostHadronNum);
-            }
-        }//end eta if statement
     } //end loop over jet matches
     
 }
@@ -697,10 +776,10 @@ JetMatchingAnalyzer::beginJob()
     
     
     
-//    newPartonNewHadronMatchMatrixRCPt20 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt20","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
-//    newPartonNewHadronMatchMatrixRCPt30 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt30","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
-//    newPartonNewHadronMatchMatrixRCPt50 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt50","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
-//    newPartonNewHadronMatchMatrixRCPt100 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt100","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
+    //    newPartonNewHadronMatchMatrixRCPt20 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt20","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
+    //    newPartonNewHadronMatchMatrixRCPt30 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt30","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
+    //    newPartonNewHadronMatchMatrixRCPt50 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt50","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
+    //    newPartonNewHadronMatchMatrixRCPt100 = fs->make<TH2D>("newPartonNewHadronMatchMatrixRCPt100","Flavor Tag Correlation Matrix", 4,-0.5,3.5,3,-0.5,2.5);
     
     
     
@@ -708,7 +787,7 @@ JetMatchingAnalyzer::beginJob()
     hJetConstituentTypeALL = fs->make<TH1D>("hJetConstituentTypeALL", "Jet Constituent PDGID",5601,-0.5,5600.5);
     hJetEtaALL = fs->make<TH1D>("hJetEtaALL", "Jet Eta",100,-7,7);
     hJetPhiALL = fs->make<TH1D>("hJetPhiALL", "Jet Phi",100,0,3.14159);
-    hJetPtALL = fs->make<TH1D>("hJetPtALL", "Jet Pt",600,0,600);
+    hJetPtALL = fs->make<TH1D>("hJetPtALL", "Jet Pt",2000,0,2000);
     hJetConstituentNum = fs->make<TH1D>("hJetConstituentNum", "Unmatched Jet Constituent Multiplicity",101,-0.5,100.5);
     hJetConstituentType = fs->make<TH1D>("hJetConstituentType", "Unmatched Jet Constituent PDGID",5601,-0.5,5600.5);
     hJetEta = fs->make<TH1D>("hJetEta", "Unmatched Jet Eta",100,-7,7);
@@ -720,6 +799,12 @@ JetMatchingAnalyzer::beginJob()
     cGhostPt_JetPt = fs->make<TH2D>("cGhostPt_JetPt","C Ghost Hadron pT VS Jet pT",500,0,500,500,0,500);
     cGhostPt_JetPt_COld = fs->make<TH2D>("cGhostPt_JetPt_COld","C Ghost Hadron pT VS Jet pT (matched to c with old tool)",500,0,500,500,0,500);
     cGhostPt_JetPt_LightOld = fs->make<TH2D>("cGhostPt_JetPt_LightOld","C Ghost Hadron pT VS Jet pT (matched to light flavor with old tool)",500,0,500,500,0,500);
+    hNumSubjets = fs->make<TH2D>("hNumSubjets", "Number of Subjets",5,-0.5,4.5,2000,0,2000);
+    oneSubjetHadronFlavour = fs->make<TH2D>("oneSubjetHadronFlavour", "Ghost Hadron Flavour Of Subjet",3,-0.5,2.5,2000,0,2000);
+    twoSubjetsHadronFlavourPT300 = fs->make<TH2D>("twoSubjetsHadronFlavourPT300", "Ghost Hadron Flavour Of Subjets",3,-0.5,2.5,3,-0.5,2.5);
+    twoSubjetsHadronFlavourPT500 = fs->make<TH2D>("twoSubjetsHadronFlavourPT500", "Ghost Hadron Flavour Of Subjets",3,-0.5,2.5,3,-0.5,2.5);
+    twoSubjetsHadronFlavourPT1000 = fs->make<TH2D>("twoSubjetsHadronFlavourPT1000", "Ghost Hadron Flavour Of Subjets",3,-0.5,2.5,3,-0.5,2.5);
+    threeSubjetsHadronFlavour = fs->make<TH2D>("threeSubjetsHadronFlavour", "Number of Ghost B Hadron Flavored Subjets",4,-0.5,3.5,1000,0,1000);
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
@@ -732,7 +817,7 @@ JetMatchingAnalyzer::endJob()
     oldPartonNewHadronMatchMatrixPt50 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt50 ) ));
     oldPartonNewHadronMatchMatrixPt100 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt100 ) ));
     
-    oldPartonNewHadronMatchMatrix->SetName("oldPartonNewHadronMatchMatrix"); cout << "Issue 0" << endl;
+    oldPartonNewHadronMatchMatrix->SetName("oldPartonNewHadronMatchMatrix");
     oldPartonNewHadronMatchMatrixPt20->SetName("oldPartonNewHadronMatchMatrixPt20");
     oldPartonNewHadronMatchMatrixPt30->SetName("oldPartonNewHadronMatchMatrixPt30");
     oldPartonNewHadronMatchMatrixPt50->SetName("oldPartonNewHadronMatchMatrixPt50");
@@ -749,7 +834,7 @@ JetMatchingAnalyzer::endJob()
     newPartonNewHadronMatchMatrixHadronNormPt30->SetName("newPartonNewHadronMatchMatrixHadronNormPt30");
     newPartonNewHadronMatchMatrixHadronNormPt50->SetName("newPartonNewHadronMatchMatrixHadronNormPt50");
     newPartonNewHadronMatchMatrixHadronNormPt100->SetName("newPartonNewHadronMatchMatrixHadronNormPt100");
-
+    
     newPartonNewHadronMatchMatrixPartonNorm = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRC ) ));
     newPartonNewHadronMatchMatrixPartonNormPt20 = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRCPt20 ) ));
     newPartonNewHadronMatchMatrixPartonNormPt30 = fs->make<TH2D>(*( const_cast< TH2D* >( newPartonNewHadronMatchMatrixRCPt30 ) ));
