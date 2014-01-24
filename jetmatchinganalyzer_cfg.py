@@ -218,5 +218,5 @@ process.analyzerCA15Subjets = cms.EDAnalyzer('JetMatchingAnalyzer',
 )
 
 process.p = cms.Path((process.myPartons+process.selectedHadronsAndPartons
-  #process.ak8PFJets*process.ak8PFJetsPruned*(process.flavourByRefAK8+process.flavourByRefAK8Subjets)*process.jetFlavourInfosAK8PFJets*(process.analyzerAK8+process.analyzerAK8Subjets))
+ # *process.ak8PFJets*process.ak8PFJetsPruned*(process.flavourByRefAK8+process.flavourByRefAK8Subjets)*process.jetFlavourInfosAK8PFJets*(process.analyzerAK8+process.analyzerAK8Subjets)))
 *process.ca15PFJets*process.caHEPTopTagJets*(process.flavourByRefCA15+process.flavourByRefCA15Subjets)*process.jetFlavourInfosCA15PFJets)*process.analyzerCA15Subjets)
