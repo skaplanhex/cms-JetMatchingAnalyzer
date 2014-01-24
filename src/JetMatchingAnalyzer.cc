@@ -161,6 +161,7 @@ private:
     TH1D* hJetPhiALL;
     TH2D* hNumSubjets;
     TH1D* hGroomedJetMass;
+    TH1D* h3SubjetMass;
     
     //ofstreams to make text files of events in each category
     ofstream eventJSON;
@@ -733,6 +734,13 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             int numberOfSubjets = subjetFlavours.size();
             //fill histogram to see how many subjets there are for each matched groomed jet (hopefully VERY highly peaked at 2 for h->bb)
             hNumSubjets->Fill(groomedJets->at(groomedJetIndex).numberOfDaughters(),ungroomedJetPt,1);
+            int numberOfB = 0;
+            for (int i = 0; i<numberOfSubjets; i++){
+                if (subjetFlavours[i] == 5){
+                    numberOfB++;
+                }
+            }
+            numBSubjets_JetPt->Fill(numberOfB, ungroomedJetPt,1);
             if (numberOfSubjets == 0){
                 throw cms::Exception("NO SUBJETS!") << "There were no subjets found...What's going on?";
             }
@@ -754,13 +762,7 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
                 }
             }
             else if (numberOfSubjets == 3){
-                int numberOfB = 0;
-                for (int i = 0; i<3; i++){
-                    if (subjetFlavours[i] == 5){
-                        numberOfB++;
-                    }
-                }
-                numBSubjets_JetPt->Fill(numberOfB, ungroomedJetPt,1);
+                h3SubjetMass->Fill(groomedJetMass);
             }
         }//end condition on useSubjets == true
         //normal operation (i.e. if useSubjets == false)
@@ -852,6 +854,7 @@ JetMatchingAnalyzer::beginJob()
     hJetPt = fs->make<TH1D>("hJetPt", "Unmatched Jet Pt",600,0,600);
     hJetNum = fs->make<TH1D>("hJetNum", "Jet Multiplicity",61,-0.5,60.5);
     hGroomedJetMass = fs->make<TH1D>("hGroomedJetMass", "Groomed Jet Mass",600,0,600);
+    h3SubjetMass = fs->make<TH1D>("h3SubjetMass", "Groomed Jet Mass For Jets With 3 Subjets",600,0,600);
     ghostHadronJetDr_JetPt = fs->make<TH2D>("ghostHadronJetDr_JetPt","dR Between Jet and Closest Hadron Match VS Jet pT",500,0,500,150,0,1.5);
     bGhostPt_JetPt = fs->make<TH2D>("bGhostPt_JetPt","B Ghost Hadron pT VS Jet pT",500,0,500,500,0,500);
     cGhostPt_JetPt = fs->make<TH2D>("cGhostPt_JetPt","C Ghost Hadron pT VS Jet pT",500,0,500,500,0,500);
