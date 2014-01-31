@@ -134,11 +134,16 @@ private:
     TH2D* newPartonNewHadronMatchMatrixPartonNormPt100;
 
     TH2D* oneSubjetHadronFlavour; //b/c/light as fn of pT
+
     TH2D* twoSubjetsHadronFlavourPT300; //matrix, b/c/light X b/c/light
     TH2D* twoSubjetsHadronFlavourPT500;
     TH2D* twoSubjetsHadronFlavourPT1000;
+    TH2D* twoSubjetsPartonFlavourPT300;
+    TH2D* twoSubjetsPartonFlavourPT500;
+    TH2D* twoSubjetsPartonFlavourPT1000;
 
     TH2D* numBSubjets_JetPt; //possible cases (no b, one b, two b, three b) as fn of pT
+    TH2D* numBSubjets_JetPt_Old;
     
     TH2D* ghostHadronJetDr_JetPt;
     TH2D* bGhostPt_JetPt;
@@ -162,10 +167,13 @@ private:
     TH2D* hNumSubjets;
     TH1D* hGroomedJetMass;
     TH1D* h3SubjetMass;
+    TH1D* h3SubjetMass_loop;
+    TH1D* hNumBHadronsClustered;
     
     //ofstreams to make text files of events in each category
-    ofstream eventJSON;
-    ofstream eventINFO;
+    ofstream eventJSON0;
+    ofstream eventJSON2;
+    //ofstream eventINFO;
 };
 
 //
@@ -196,8 +204,8 @@ JetMatchingAnalyzer::JetMatchingAnalyzer(const edm::ParameterSet& iConfig)
     groomedJets_ = ( iConfig.exists("groomedJets") ? iConfig.getParameter<edm::InputTag>("groomedJets") : edm::InputTag() );
     
     //initialize filenames for each ofstream
-    //eventJSON_c.open("eventJSON.txt");
-    //eventINFO_c.open("eventINFO.txt");
+    eventJSON0.open("eventJSON0.txt");
+    eventJSON2.open("eventJSON2.txt");
 }
 
 
@@ -229,14 +237,8 @@ JetMatchingAnalyzer::DeltaR_Rapidity(const reco::Candidate* const cand1, const r
 const char*
 JetMatchingAnalyzer::partonFlavourToChar(int flav)
 {
-    if (flav == 1){
-        return "d";
-    }
-    else if (flav == 2){
-        return "u";
-    }
-    else if (flav == 3){
-        return "s";
+    if (flav == 1 || flav == 2 || flav == 3 || flav == 21){
+        return "light";
     }
     else if(flav == 4){
         return "c";
@@ -244,8 +246,8 @@ JetMatchingAnalyzer::partonFlavourToChar(int flav)
     else if (flav == 5){
         return "b";
     }
-    else if (flav == 21){
-        return "g";
+    else if (flav == 0){
+        return "no match";
     }
     else{
         throw cms::Exception("PDGID Issue") << "PDGID Not recognized, investigate!";
@@ -651,6 +653,10 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             if (heavyID == 0){
                 throw cms::Exception("Parameter Issue") << "You want to use subjet mode but did not define a pdgID to match ungroomed fat jets! Example: add heavyID = cms.int32(25) if you are looking at higgs jets.";
             }
+            if ( groomedJets->empty() ){
+                std::cout << "This event has no groomed jets, skip it!" << std::endl;
+                return;
+            }
             bool matchedToHeavy = false;
             //loop over genParticles to see if the ungroommed fat jet is matched to a higgs/top
             for (reco::GenParticleCollection::const_iterator iGenPart = particles->begin(); iGenPart != particles->end(); ++iGenPart) {
@@ -663,21 +669,35 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
                 }
             }
             //if not matched to a higgs, go to the next jet...
-            if (!matchedToHeavy) {
+            if ( !matchedToHeavy ) {
                 continue;
             }
-            if(heavyID == 25){
+            if ( heavyID == 25 ){
                 const reco::GenParticleRefVector & bHadrons = aInfo.getbHadrons();
+                hNumBHadronsClustered->Fill(bHadrons.size());
                 if (bHadrons.size() != 2){
                     continue;
                 }
             }
-
+            else if ( heavyID == 6 ){
+                const reco::GenParticleRefVector & bHadrons = aInfo.getbHadrons();
+                hNumBHadronsClustered->Fill(bHadrons.size());
+                if (bHadrons.size() != 1){
+                    continue;
+                }
+            }
 
             //cut on groomed jet mass.
             int groomedJetIndex = groomedJetMatches[currentIndex];
             double groomedJetMass = groomedJets->at(groomedJetIndex).mass();
             hGroomedJetMass->Fill(groomedJetMass);
+            if(groomedJets->at(groomedJetIndex).numberOfDaughters() == 3){
+                h3SubjetMass->Fill(groomedJetMass);
+            }
+            //ignore top jets that don't have three subjets
+            if (groomedJets->at(groomedJetIndex).numberOfDaughters() != 3 && heavyID == 6){
+                continue;
+            }
             double massCutLowEnd = -1.;
             double massCutHighEnd = -1.;
             if(heavyID == 6){
@@ -691,13 +711,14 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             else{
                 throw cms::Exception("mass cut error!") << "This PDGID does not yet have hard coded mass cuts. Build in your mass cuts in order to run!";
             }
-
-            if ( (groomedJetMass < massCutLowEnd) || (groomedJetMass > massCutHighEnd) ){
+            // TEMPORARILY NOT DOING THE MASS CUT FOR TOPS!!!
+            if ( ((groomedJetMass < massCutLowEnd) || (groomedJetMass > massCutHighEnd)) && (heavyID != 6)){
                 continue;
             }
 
             //now that we have the index of the matched groomed jet, use that index to look into the groomed jet collection to get the subjets
-            std::vector<int> subjetFlavours;
+            std::vector<int> oldSubjetFlavours;
+            std::vector<int> newSubjetFlavours;
             int subjetCounter = 0;
             int maxSubjets = 0;
             if(heavyID == 25){//for higgs --> b + bbar
@@ -709,13 +730,12 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             else{
                 throw cms::Exception("How Many Subjets?") << "Your heavy PDGID was not matched to a subjet count.  Do this!";
             }
-
             for(size_t s=0; s<groomedJets->at(groomedJetIndex).numberOfDaughters(); ++s){
                 //ONLY LOOK AT TWO HARDEST SUBJETS FOR HIGGS
                 subjetCounter++;
                 if (subjetCounter > maxSubjets) {
                     std::cout << "There are now " << subjetCounter << " subjets!!!!  INVESTIGATE!!!" << std::endl;
-                    break;
+                    //break;
                 }
                 const edm::Ptr<reco::Candidate> & subjet = groomedJets->at(groomedJetIndex).daughterPtr(s);
                 for ( reco::JetFlavourInfoMatchingCollection::const_iterator sj  = subjetFlavourInfos->begin(); sj != subjetFlavourInfos->end(); ++sj ) {
@@ -724,46 +744,89 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
                     int subjetIndex = sj - subjetFlavourInfos->begin();
                     const reco::Jet *aSubjet = (*sj).first.get();
                     const reco::JetFlavourInfo tempInfo = (*sj).second;
-                    subjetFlavours.push_back(tempInfo.getHadronFlavour());
+                    newSubjetFlavours.push_back(tempInfo.getHadronFlavour());
                     //assuming the subjet flavourinfos collection and jetmatchedpartons have the same order (think this is true, but should be tested!)
                     const reco::GenParticleRef partonRef = (*subjetFlavourByRefMatches)[subjetIndex].second.algoDefinitionParton();
                     analyzeJet(aSubjet,tempInfo,partonRef,ungroomedJetPt);
                 }
+                for (reco::JetMatchedPartonsCollection::const_iterator sjm = subjetFlavourByRefMatches->begin(); sjm != subjetFlavourByRefMatches->end(); ++sjm){
+                    if( subjet != edm::Ptr<reco::Candidate>((*sjm).first.id(), (*sjm).first.get(), (*sjm).first.key()) ) continue;
+                    int subjetIndex = sjm - subjetFlavourByRefMatches->begin();
+                    const reco::Jet *aSubjet = (*sjm).first.get();
+                    const reco::GenParticleRef partonRef = (*sjm).second.algoDefinitionParton();
+                    int algoFlav;
+                    if(partonRef.isNull()){
+                        algoFlav = 0;
+                    }
+                    else{
+                        algoFlav = abs(partonRef.get()->pdgId());
+                    }
+                    oldSubjetFlavours.push_back( algoFlav );
+                }
+
             }
             //analyze subjet flavor combos and fill histograms!
-            int numberOfSubjets = subjetFlavours.size();
+            unsigned int numberOfSubjets = newSubjetFlavours.size();
+            if (numberOfSubjets != oldSubjetFlavours.size()){
+                throw cms::Exception("flavor vector issue") << "# of new: " << numberOfSubjets << ", # of old: " << oldSubjetFlavours.size() << ". Why don't they match?!";
+            }
+            if ( numberOfSubjets != groomedJets->at(groomedJetIndex).numberOfDaughters() ){
+                std::cout << "numberOfDaughters = " << groomedJets->at(groomedJetIndex).numberOfDaughters() << " and flavor vector size = " << numberOfSubjets << " don't agree, why??" << std::endl;
+            }
             //fill histogram to see how many subjets there are for each matched groomed jet (hopefully VERY highly peaked at 2 for h->bb)
             hNumSubjets->Fill(groomedJets->at(groomedJetIndex).numberOfDaughters(),ungroomedJetPt,1);
             int numberOfB = 0;
-            for (int i = 0; i<numberOfSubjets; i++){
-                if (subjetFlavours[i] == 5){
+            int numberOfBOld = 0;
+            for (unsigned int i = 0; i<numberOfSubjets; i++){
+                if (newSubjetFlavours[i] == 5){
                     numberOfB++;
+                }
+                if (oldSubjetFlavours[i] == 5){
+                    numberOfBOld++;
                 }
             }
             numBSubjets_JetPt->Fill(numberOfB, ungroomedJetPt,1);
+            //investigate cases for top if numberOfB==0 or 2
+            if(heavyID == 6){
+                if(numberOfB == 0){
+                    eventJSON0 << eventAddress << "\n";
+                }
+                else if(numberOfB == 2){
+                    eventJSON2 << eventAddress << "\n";
+                }
+            }
+            numBSubjets_JetPt_Old->Fill(numberOfBOld, ungroomedJetPt,1);
             if (numberOfSubjets == 0){
                 throw cms::Exception("NO SUBJETS!") << "There were no subjets found...What's going on?";
             }
             else if (numberOfSubjets == 1){
-                int subjetFlav = subjetFlavours[0];
+                int subjetFlav = newSubjetFlavours[0];
                 oneSubjetHadronFlavour->Fill( hadronFlavourToChar(subjetFlav), ungroomedJetPt,1 );
             }
             else if (numberOfSubjets == 2){
-                int subjetFlav1 = subjetFlavours[0];
-                int subjetFlav2 = subjetFlavours[1];
+                int oldSubjetFlav1 = oldSubjetFlavours[0];
+                int oldSubjetFlav2 = oldSubjetFlavours[1];
+
+
+                int subjetFlav1 = newSubjetFlavours[0];
+                int subjetFlav2 = newSubjetFlavours[1];
                 if (ungroomedJetPt > 300){
                     twoSubjetsHadronFlavourPT300->Fill( hadronFlavourToChar(subjetFlav1), hadronFlavourToChar(subjetFlav2), 1 );
+                    twoSubjetsPartonFlavourPT300->Fill( partonFlavourToChar(oldSubjetFlav1), partonFlavourToChar(oldSubjetFlav2), 1 );
                 }
                 if (ungroomedJetPt > 500){
                     twoSubjetsHadronFlavourPT500->Fill( hadronFlavourToChar(subjetFlav1), hadronFlavourToChar(subjetFlav2), 1 );
+                    twoSubjetsPartonFlavourPT500->Fill( partonFlavourToChar(oldSubjetFlav1), partonFlavourToChar(oldSubjetFlav2), 1 );
                 }
                 if (ungroomedJetPt > 1000){
                     twoSubjetsHadronFlavourPT1000->Fill( hadronFlavourToChar(subjetFlav1), hadronFlavourToChar(subjetFlav2), 1 );
+                    twoSubjetsPartonFlavourPT1000->Fill( partonFlavourToChar(oldSubjetFlav1), partonFlavourToChar(oldSubjetFlav2), 1 );
                 }
             }
             else if (numberOfSubjets == 3){
-                h3SubjetMass->Fill(groomedJetMass);
+                h3SubjetMass_loop->Fill(groomedJetMass);
             }
+            //plots for 
         }//end condition on useSubjets == true
         //normal operation (i.e. if useSubjets == false)
         else{
@@ -855,6 +918,7 @@ JetMatchingAnalyzer::beginJob()
     hJetNum = fs->make<TH1D>("hJetNum", "Jet Multiplicity",61,-0.5,60.5);
     hGroomedJetMass = fs->make<TH1D>("hGroomedJetMass", "Groomed Jet Mass",600,0,600);
     h3SubjetMass = fs->make<TH1D>("h3SubjetMass", "Groomed Jet Mass For Jets With 3 Subjets",600,0,600);
+    h3SubjetMass_loop = fs->make<TH1D>("h3SubjetMass_loop", "Groomed Jet Mass For Jets With 3 Subjets",600,0,600);
     ghostHadronJetDr_JetPt = fs->make<TH2D>("ghostHadronJetDr_JetPt","dR Between Jet and Closest Hadron Match VS Jet pT",500,0,500,150,0,1.5);
     bGhostPt_JetPt = fs->make<TH2D>("bGhostPt_JetPt","B Ghost Hadron pT VS Jet pT",500,0,500,500,0,500);
     cGhostPt_JetPt = fs->make<TH2D>("cGhostPt_JetPt","C Ghost Hadron pT VS Jet pT",500,0,500,500,0,500);
@@ -865,14 +929,21 @@ JetMatchingAnalyzer::beginJob()
     twoSubjetsHadronFlavourPT300 = fs->make<TH2D>("twoSubjetsHadronFlavourPT300", "Ghost Hadron Flavour Of Subjets",3,-0.5,2.5,3,-0.5,2.5);
     twoSubjetsHadronFlavourPT500 = fs->make<TH2D>("twoSubjetsHadronFlavourPT500", "Ghost Hadron Flavour Of Subjets",3,-0.5,2.5,3,-0.5,2.5);
     twoSubjetsHadronFlavourPT1000 = fs->make<TH2D>("twoSubjetsHadronFlavourPT1000", "Ghost Hadron Flavour Of Subjets",3,-0.5,2.5,3,-0.5,2.5);
+    twoSubjetsPartonFlavourPT300 = fs->make<TH2D>("twoSubjetsPartonFlavourPT300", "Parton Flavour Of Subjets",4,-0.5,3.5,4,-0.5,3.5);
+    twoSubjetsPartonFlavourPT500 = fs->make<TH2D>("twoSubjetsPartonFlavourPT500", "Parton Flavour Of Subjets",4,-0.5,3.5,4,-0.5,3.5);
+    twoSubjetsPartonFlavourPT1000 = fs->make<TH2D>("twoSubjetsPartonFlavourT1000", "Parton Flavour Of Subjets",4,-0.5,3.5,4,-0.5,3.5);
     numBSubjets_JetPt = fs->make<TH2D>("numBSubjets_JetPt", "Number of Ghost B Hadron Flavored Subjets",4,-0.5,3.5,2000,0,2000);
+    numBSubjets_JetPt_Old = fs->make<TH2D>("numBSubjets_JetPt_Old", "Number of B Parton Flavored Subjets",4,-0.5,3.5,2000,0,2000);
     hDRFatJetGroomedJet = fs->make<TH1D>("hDRFatJetGroomedJet", "dR (rapidity) between groomed jet and closest fat jet",400,0,10);
+    hNumBHadronsClustered = fs->make<TH1D>("hNumBHadronsClustered", "Number of Ghost B Hadrons Clustered With Fat Jet",5,-0.5,4.5);
 }
 
 // ------------ method called once each job just after ending the event loop  ------------
 void
 JetMatchingAnalyzer::endJob()
 {
+    eventJSON0.close();
+    eventJSON2.close();
     oldPartonNewHadronMatchMatrix = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRC ) ));
     oldPartonNewHadronMatchMatrixPt20 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt20 ) ));
     oldPartonNewHadronMatchMatrixPt30 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt30 ) ));

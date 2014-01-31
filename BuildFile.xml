@@ -9,6 +9,4 @@
 <use name="DataFormats/HepMCCandidate"/>
 <use name="CommonTools/UtilAlgos"/>
 <flags EDM_PLUGIN="1"/>
-<export>
-   <lib name="1"/>
-</export>
+<flags CXXFLAGS="-O0 -g -fno-inline"/>
