@@ -171,8 +171,8 @@ private:
     TH1D* hNumBHadronsClustered;
     
     //ofstreams to make text files of events in each category
-    ofstream eventJSON0;
-    ofstream eventJSON2;
+    // ofstream eventJSON0;
+    // ofstream eventJSON2;
     //ofstream eventINFO;
 };
 
@@ -204,8 +204,8 @@ JetMatchingAnalyzer::JetMatchingAnalyzer(const edm::ParameterSet& iConfig)
     groomedJets_ = ( iConfig.exists("groomedJets") ? iConfig.getParameter<edm::InputTag>("groomedJets") : edm::InputTag() );
     
     //initialize filenames for each ofstream
-    eventJSON0.open("eventJSON0.txt");
-    eventJSON2.open("eventJSON2.txt");
+//     eventJSON0.open("eventJSON0.txt");
+//     eventJSON2.open("eventJSON2.txt");
 }
 
 
@@ -618,6 +618,8 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
 
     //first match all groomed jets to fat jets
     std::map< int,int > groomedJetMatches;
+    std::vector<bool> fatJetGroomedLocks(theJetFlavourInfos->size(),false);
+    std::vector<bool> fatJetHeavyLocks(theJetFlavourInfos->size(),false);
     if (useSubjets){
         iEvent.getByLabel(groomedJets_, groomedJets);
         iEvent.getByLabel(subjetFlavourByRefSrc,subjetFlavourByRefMatches);
@@ -626,8 +628,9 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             double matchedDR = 1e9;
             int matchedIdx = -1;
             for(reco::JetFlavourInfoMatchingCollection::const_iterator j  = theJetFlavourInfos->begin();j != theJetFlavourInfos->end(); ++j){
-                //double tempDR = reco::deltaR( j->first->rapidity(), j->first->phi(), groomedJets->at(gj).rapidity(), groomedJets->at(gj).phi() );
-                double tempDR = reco::deltaR( j->first->eta(), j->first->phi(), groomedJets->at(gj).eta(), groomedJets->at(gj).phi() );
+                if( fatJetGroomedLocks.at(j - theJetFlavourInfos->begin()) ) continue; // skip jets that have already been matched
+                double tempDR = reco::deltaR( j->first->rapidity(), j->first->phi(), groomedJets->at(gj).rapidity(), groomedJets->at(gj).phi() );
+                //double tempDR = reco::deltaR( j->first->eta(), j->first->phi(), groomedJets->at(gj).eta(), groomedJets->at(gj).phi() );
                 if( tempDR < matchedDR ){
                     matchedDR = tempDR;
                     matchedIdx = (j - theJetFlavourInfos->begin());
@@ -638,9 +641,36 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             }
             else{
                 groomedJetMatches[matchedIdx] = gj;
+                fatJetGroomedLocks.at(matchedIdx) = true;
                 hDRFatJetGroomedJet->Fill(matchedDR);
             }
         }//end loop over groomed jets
+
+        // loop over jets and genParticles to match fat jet to top or higgs
+        for (reco::GenParticleCollection::const_iterator iGenPart = particles->begin(); iGenPart != particles->end(); ++iGenPart) {
+            int absPartID = abs(iGenPart->pdgId());
+            if (absPartID != heavyID) continue;
+            int particleStatus = iGenPart->status();
+            double tempDR = 1e9;
+            int matchIndex = -1;
+            for (reco::JetFlavourInfoMatchingCollection::const_iterator iMatch = theJetFlavourInfos->begin(); iMatch != theJetFlavourInfos->end(); ++iMatch) {
+                int currentIndex = iMatch - theJetFlavourInfos->begin();
+                if ( fatJetHeavyLocks.at(currentIndex) ) continue;
+                const reco::Jet* iJet  = (*iMatch).first.get();
+                double jetParticleDr = reco::deltaR(iJet->rapidity(),iJet->phi(),iGenPart->rapidity(),iGenPart->phi());
+                if ( (jetParticleDr < tempDR) && (jetParticleDr < 0.3) && (particleStatus == 3) ){
+                    tempDR = jetParticleDr;
+                    matchIndex = currentIndex;
+                }
+            } //end loop over fat jet matches
+            if (matchIndex == -1){
+                std::cout << "Couldn't find match for top/higgs!!!" << std::endl;
+            }
+            else{
+                fatJetHeavyLocks.at(matchIndex) = true;
+            }
+        } //end loop over genParticles
+
     } //end if(useSubjets)
 
     for (reco::JetFlavourInfoMatchingCollection::const_iterator iMatch = theJetFlavourInfos->begin(); iMatch != theJetFlavourInfos->end(); ++iMatch) {
@@ -657,19 +687,8 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
                 std::cout << "This event has no groomed jets, skip it!" << std::endl;
                 return;
             }
-            bool matchedToHeavy = false;
-            //loop over genParticles to see if the ungroommed fat jet is matched to a higgs/top
-            for (reco::GenParticleCollection::const_iterator iGenPart = particles->begin(); iGenPart != particles->end(); ++iGenPart) {
-                double jetParticleDr = reco::deltaR(iJet->rapidity(),iJet->phi(),iGenPart->rapidity(),iGenPart->phi());
-                int absPartID = abs(iGenPart->pdgId());
-                int particleStatus = iGenPart->status();
-                if ( (absPartID == heavyID) && (jetParticleDr < 0.3) && (particleStatus == 3) ){
-                    matchedToHeavy = true;
-                    break;
-                }
-            }
-            //if not matched to a higgs, go to the next jet...
-            if ( !matchedToHeavy ) {
+            //if not matched to a higgs/top, go to the next jet...
+            if ( ( !fatJetHeavyLocks.at(currentIndex) ) || ( !fatJetGroomedLocks.at(currentIndex) ) ) {
                 continue;
             }
             if ( heavyID == 25 ){
@@ -787,14 +806,14 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             }
             numBSubjets_JetPt->Fill(numberOfB, ungroomedJetPt,1);
             //investigate cases for top if numberOfB==0 or 2
-            if(heavyID == 6){
-                if(numberOfB == 0){
-                    eventJSON0 << eventAddress << "\n";
-                }
-                else if(numberOfB == 2){
-                    eventJSON2 << eventAddress << "\n";
-                }
-            }
+            // if(heavyID == 6){
+            //     if(numberOfB == 0){
+            //         eventJSON0 << eventAddress << "\n";
+            //     }
+            //     else if(numberOfB == 2){
+            //         eventJSON2 << eventAddress << "\n";
+            //     }
+            // }
             numBSubjets_JetPt_Old->Fill(numberOfBOld, ungroomedJetPt,1);
             if (numberOfSubjets == 0){
                 throw cms::Exception("NO SUBJETS!") << "There were no subjets found...What's going on?";
@@ -942,8 +961,8 @@ JetMatchingAnalyzer::beginJob()
 void
 JetMatchingAnalyzer::endJob()
 {
-    eventJSON0.close();
-    eventJSON2.close();
+    // eventJSON0.close();
+    // eventJSON2.close();
     oldPartonNewHadronMatchMatrix = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRC ) ));
     oldPartonNewHadronMatchMatrixPt20 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt20 ) ));
     oldPartonNewHadronMatchMatrixPt30 = fs->make<TH2D>(*( const_cast< TH2D* >( oldPartonNewHadronMatchMatrixRCPt30 ) ));
