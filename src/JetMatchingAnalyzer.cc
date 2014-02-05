@@ -657,13 +657,15 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
                 int currentIndex = iMatch - theJetFlavourInfos->begin();
                 if ( fatJetHeavyLocks.at(currentIndex) ) continue;
                 const reco::Jet* iJet  = (*iMatch).first.get();
-                double jetParticleDr = reco::deltaR(iJet->rapidity(),iJet->phi(),iGenPart->rapidity(),iGenPart->phi());
+                //double jetParticleDr = reco::deltaR(iJet->rapidity(),iJet->phi(),iGenPart->rapidity(),iGenPart->phi());
+                double jetParticleDr = reco::deltaR(iJet->eta(),iJet->phi(),iGenPart->eta(),iGenPart->phi());
                 if ( (jetParticleDr < tempDR) && (jetParticleDr < 0.3) && (particleStatus == 3) ){
                     tempDR = jetParticleDr;
                     matchIndex = currentIndex;
                 }
             } //end loop over fat jet matches
             if (matchIndex == -1){
+                //cout << "min dR after jet loop: " << tempDR << endl;
                 std::cout << "Couldn't find match for top/higgs!!!" << std::endl;
             }
             else{
