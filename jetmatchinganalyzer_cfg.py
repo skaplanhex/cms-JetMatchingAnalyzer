@@ -34,14 +34,14 @@ process.maxEvents = cms.untracked.PSet( input = cms.untracked.int32(options.maxE
 
 process.source = cms.Source("PoolSource",
                             fileNames = cms.untracked.vstring(
-          '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/0007F60C-D49C-E211-BD33-00266CFFA1E4.root',
-          '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/44517A43-EA9C-E211-99B5-00266CFFA418.root',
-          '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/92BAFDF6-E79C-E211-AEF1-00266CFFB1F4.root',
-          '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/FEFB984B-F09C-E211-8BD5-00266CFFA754.root')
-         # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/1066A0AC-F29C-E211-AC60-00266CFFA1E4.root',
-         # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/14C63C8A-DD9C-E211-A8F3-00266CFFA750.root',
-         # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/B4A4ACF8-CB9C-E211-9BE3-00266CFFA604.root',
-         # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/E4F843C9-DF9C-E211-BF01-00266CFFA1E4.root')
+          # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/0007F60C-D49C-E211-BD33-00266CFFA1E4.root',
+          # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/44517A43-EA9C-E211-99B5-00266CFFA418.root',
+          # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/92BAFDF6-E79C-E211-AEF1-00266CFFB1F4.root',
+          # '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-2500_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/FEFB984B-F09C-E211-8BD5-00266CFFA754.root')
+         '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/1066A0AC-F29C-E211-AC60-00266CFFA1E4.root',
+         '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/14C63C8A-DD9C-E211-A8F3-00266CFFA750.root',
+         '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/B4A4ACF8-CB9C-E211-9BE3-00266CFFA604.root',
+         '/store/mc/Summer12_DR53X/RadionToHHTo4B_M-1000_TuneZ2star_8TeV-nm-madgraph/AODSIM/PU_S10_START53_V7C-v1/10000/E4F843C9-DF9C-E211-BF01-00266CFFA1E4.root')
        # '/store/mc/Summer12_DR53X/ZPrimeToTTJets_M2000GeV_W200GeV_TuneZ2star_8TeV-madgraph-tauola/AODSIM/PU_S10_START53_V7A-v1/0000/04DB1D18-6FFC-E111-9BCC-00215E21D5BE.root',
        # '/store/mc/Summer12_DR53X/ZPrimeToTTJets_M2000GeV_W200GeV_TuneZ2star_8TeV-madgraph-tauola/AODSIM/PU_S10_START53_V7A-v1/0000/0E72AA57-2AFC-E111-B8CB-00215E21DDA4.root',
        # '/store/mc/Summer12_DR53X/ZPrimeToTTJets_M2000GeV_W200GeV_TuneZ2star_8TeV-madgraph-tauola/AODSIM/PU_S10_START53_V7A-v1/0000/20536CF2-2AFC-E111-9B66-00215E21D690.root',
@@ -83,11 +83,17 @@ process.ak8PFJetsPruned = ak5PFJetsPruned.clone(
             writeCompound       = cms.bool(True),
             jetCollInstanceName = cms.string("SubJets")
             )
-#process.flavourByRefKT6 = cms.EDProducer("JetPartonMatcher",
-#      jets = cms.InputTag("kt6"+options.jetType),
-#      coneSizeToAssociate = cms.double(0.3),
-#      partons = cms.InputTag("myPartons")
-#      )
+from RecoJets.JetProducers.kt4PFJets_cfi import kt4PFJets
+process.kt8PFJets = kt4PFJets.clone(
+    rParam = cms.double(0.8),
+    src = cms.InputTag("particleFlow")
+) 
+process.kt8PFJetsCompound = kt4PFJets.clone(
+    rParam = cms.double(0.8),
+    src = cms.InputTag("particleFlow"),
+    writeCompound = cms.bool(True),
+    jetCollInstanceName=cms.string("SubJets")
+) 
 process.selectedHadronsAndPartons = cms.EDProducer('HadronAndPartonSelector',
            src = cms.InputTag("generator"),
            particles = cms.InputTag("genParticles"),
@@ -100,6 +106,16 @@ process.flavourByRefAK8 = cms.EDProducer("JetPartonMatcher",
      )
 process.flavourByRefAK8Subjets = cms.EDProducer("JetPartonMatcher",
      jets = cms.InputTag("ak8PFJetsPruned", "SubJets"),
+     coneSizeToAssociate = cms.double(0.3),
+     partons = cms.InputTag("myPartons")
+     )
+process.flavourByRefKT8 = cms.EDProducer("JetPartonMatcher",
+     jets = cms.InputTag("kt8PFJets"),
+     coneSizeToAssociate = cms.double(0.3),
+     partons = cms.InputTag("myPartons")
+     )
+process.flavourByRefKT8Subjets = cms.EDProducer("JetPartonMatcher",
+     jets = cms.InputTag("kt8PFJetsCompound", "SubJets"),
      coneSizeToAssociate = cms.double(0.3),
      partons = cms.InputTag("myPartons")
      )
@@ -117,6 +133,18 @@ process.flavourByRefAK8Subjets = cms.EDProducer("JetPartonMatcher",
 
 #for the higgs sample
 
+process.jetFlavourInfosKT8PFJets = cms.EDProducer("JetFlavourClustering",
+      jets                     = cms.InputTag("kt8PFJets"),
+      groomedJets              = cms.InputTag("kt8PFJetsCompound"),
+      subjets                  = cms.InputTag("kt8PFJetsCompound", "SubJets"),
+      bHadrons                 = cms.InputTag("selectedHadronsAndPartons","bHadrons"),
+      cHadrons                 = cms.InputTag("selectedHadronsAndPartons","cHadrons"),
+      partons                  = cms.InputTag("selectedHadronsAndPartons","partons"),
+      jetAlgorithm             = cms.string("Kt"),
+      rParam                   = cms.double(0.8),
+      ghostRescaling           = cms.double(1e-18),
+      hadronFlavourHasPriority = cms.bool(True)
+      )
 process.jetFlavourInfosAK8PFJets = cms.EDProducer("JetFlavourClustering",
       jets                     = cms.InputTag("ak8PFJets"),
       groomedJets              = cms.InputTag("ak8PFJetsPruned"),
@@ -203,6 +231,19 @@ process.analyzerAK8Subjets = cms.EDAnalyzer('JetMatchingAnalyzer',
          hadronMatchDr = cms.double(0.3),
          jetPtCut = cms.double(0.0)
 )
+process.analyzerKT8Subjets = cms.EDAnalyzer('JetMatchingAnalyzer',
+         particleSource = cms.InputTag("genParticles"),
+         jets = cms.InputTag("kt8PFJets"),
+         groomedJets = cms.InputTag("kt8PFJetsCompound"),
+         jetFlavourByRef = cms.InputTag("flavourByRefKT8"),
+         subjetFlavourByRef = cms.InputTag("flavourByRefKT8Subjets"),
+         jetFlavourInfos = cms.InputTag("jetFlavourInfosKT8PFJets"),
+         subjetFlavourInfos = cms.InputTag("jetFlavourInfosKT8PFJets","SubJets"),
+         useSubjets = cms.bool(True),
+         heavyID = cms.int32(25),
+         hadronMatchDr = cms.double(0.3),
+         jetPtCut = cms.double(0.0)
+)
 process.analyzerCA15Subjets = cms.EDAnalyzer('JetMatchingAnalyzer',
          particleSource = cms.InputTag("genParticles"),
          jets = cms.InputTag("ca15PFJets"),
@@ -217,6 +258,9 @@ process.analyzerCA15Subjets = cms.EDAnalyzer('JetMatchingAnalyzer',
          jetPtCut = cms.double(0.0)
 )
 
-process.p = cms.Path((process.myPartons+process.selectedHadronsAndPartons
-  *process.ak8PFJets*process.ak8PFJetsPruned*(process.flavourByRefAK8+process.flavourByRefAK8Subjets)*process.jetFlavourInfosAK8PFJets*(process.analyzerAK8+process.analyzerAK8Subjets)))
+process.p = cms.Path((process.myPartons+process.selectedHadronsAndPartons)*(process.ak8PFJets+process.kt8PFJets)*(process.ak8PFJetsPruned+process.kt8PFJetsCompound)*(process.flavourByRefAK8+process.flavourByRefAK8Subjets)*process.flavourByRefKT8Subjets*(process.jetFlavourInfosAK8PFJets+process.jetFlavourInfosKT8PFJets)*(process.analyzerAK8+process.analyzerAK8Subjets+process.analyzerKT8Subjets))
+
+# process.p = cms.Path((process.myPartons+process.selectedHadronsAndPartons)
+#   *process.kt8PFJets*process.kt8PFJetsCompound*(process.flavourByRefKT8Subjets+process.jetFlavourInfosKT8PFJets)*process.analyzerKT8Subjets)
+#  *process.ak8PFJets*process.ak8PFJetsPruned*(process.flavourByRefAK8+process.flavourByRefAK8Subjets)*process.jetFlavourInfosAK8PFJets*(process.analyzerAK8+process.analyzerAK8Subjets)))
 #*process.ca15PFJets*process.caHEPTopTagJets*(process.flavourByRefCA15+process.flavourByRefCA15Subjets)*process.jetFlavourInfosCA15PFJets)*process.analyzerCA15Subjets)

@@ -666,7 +666,7 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
             } //end loop over fat jet matches
             if (matchIndex == -1){
                 //cout << "min dR after jet loop: " << tempDR << endl;
-                std::cout << "Couldn't find match for top/higgs!!!" << std::endl;
+                //std::cout << "Couldn't find match for top/higgs!!!" << std::endl;
             }
             else{
                 fatJetHeavyLocks.at(matchIndex) = true;
@@ -720,22 +720,22 @@ JetMatchingAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iS
                 continue;
             }
             double massCutLowEnd = -1.;
-            double massCutHighEnd = -1.;
-            if(heavyID == 6){
-                massCutLowEnd = 145.;
-                massCutHighEnd = 205.;
-            }
-            else if (heavyID == 25){
-                massCutLowEnd = 100.;
-                massCutHighEnd = 135.;
-            }
-            else{
-                throw cms::Exception("mass cut error!") << "This PDGID does not yet have hard coded mass cuts. Build in your mass cuts in order to run!";
-            }
-            // TEMPORARILY NOT DOING THE MASS CUT FOR TOPS!!!
-            if ( ((groomedJetMass < massCutLowEnd) || (groomedJetMass > massCutHighEnd)) && (heavyID != 6)){
-                continue;
-            }
+            // double massCutHighEnd = -1.;
+            // if(heavyID == 6){
+            //     massCutLowEnd = 145.;
+            //     massCutHighEnd = 205.;
+            // }
+            // else if (heavyID == 25){
+            //     massCutLowEnd = 100.;
+            //     massCutHighEnd = 135.;
+            // }
+            // else{
+            //     throw cms::Exception("mass cut error!") << "This PDGID does not yet have hard coded mass cuts. Build in your mass cuts in order to run!";
+            // }
+            // // TEMPORARILY NOT DOING THE MASS CUT FOR TOPS!!!
+            // if ( ((groomedJetMass < massCutLowEnd) || (groomedJetMass > massCutHighEnd)) && (heavyID != 6) ) {
+            //     continue;
+            // }
 
             //now that we have the index of the matched groomed jet, use that index to look into the groomed jet collection to get the subjets
             std::vector<int> oldSubjetFlavours;
